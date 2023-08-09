@@ -1,11 +1,11 @@
 [package]
 name    = "parry2d"
-version = "0.13.4"
+version = "0.13.5"
 authors = [ "Sébastien Crozet <developer@crozet.re>" ]
 
 description = "2 dimensional collision detection library in Rust."
-documentation = "http://parry.rs/docs"
-homepage = "http://parry.rs"
+documentation = "https://parry.rs/docs"
+homepage = "https://parry.rs"
 repository = "https://github.com/dimforge/parry"
 readme = "README.md"
 keywords = [ "collision", "geometry", "distance", "ray", "convex" ]
