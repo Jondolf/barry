@@ -1,12 +1,17 @@
 [workspace]
-members = ["crates/parry2d", "crates/parry3d", "crates/parry2d-f64", "crates/parry3d-f64"]
+members = [
+    "crates/barry2d",
+    "crates/barry3d",
+    "crates/barry2d-f64",
+    "crates/barry3d-f64",
+]
 resolver = "2"
 
 [patch.crates-io]
-parry2d = { path = "crates/parry2d" }
-parry3d = { path = "crates/parry3d" }
-parry2d-f64 = { path = "crates/parry2d-f64" }
-parry3d-f64 = { path = "crates/parry3d-f64" }
+barry2d = { path = "crates/barry2d" }
+barry3d = { path = "crates/barry3d" }
+barry2d-f64 = { path = "crates/barry2d-f64" }
+barry3d-f64 = { path = "crates/barry3d-f64" }
 
 #simba = { path = "../simba" }
 #simba = { git = "https://github.com/dimforge/simba", rev = "45a5266eb36ed9d25907e9bf9130cd4ac846a748" }

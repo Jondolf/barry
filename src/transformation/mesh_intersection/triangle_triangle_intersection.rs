@@ -199,7 +199,7 @@ pub fn triangle_triangle_intersection(
                 proj(tri1.c - tri2.a),
             ];
             let poly2 = [
-                proj(tri2.a - tri2.a),
+                proj(Default::default()),
                 proj(tri2.b - tri2.a),
                 proj(tri2.c - tri2.a),
             ];

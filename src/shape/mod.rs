@@ -1,4 +1,4 @@
-//! Shapes supported by parry.
+//! Shapes supported by barry.
 
 pub use self::ball::Ball;
 pub use self::capsule::Capsule;

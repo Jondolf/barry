@@ -1,8 +1,8 @@
 /*!
-parry
+barry
 ========
 
-**parry** is a 2 and 3-dimensional geometric library written with
+**barry** is a 2 and 3-dimensional geometric library written with
 the rust programming language.
 
 */
@@ -14,7 +14,7 @@ the rust programming language.
 #![warn(missing_docs)] // TODO: deny this
 #![warn(unused_imports)]
 #![allow(missing_copy_implementations)]
-#![doc(html_root_url = "http://docs.rs/parry/0.1.1")]
+#![doc(html_root_url = "http://docs.rs/barry/0.1.1")]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(not(feature = "rkyv"), deny(unused_qualifications))] // TODO: deny that everytime
 

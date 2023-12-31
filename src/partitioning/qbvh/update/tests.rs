@@ -14,19 +14,19 @@ use super::QbvhUpdateWorkspace;
 fn test_case_qbvh_1() {
     //  thread 'partitioning::qbvh::update::tests::test_case_qbvh' panicked at 'assertion failed: `(left == right)`
     //  left: `5`,
-    //  right: `6`', crates\parry2d\../../src\partitioning\qbvh\update.rs:252:9
+    //  right: `6`', crates\barry2d\../../src\partitioning\qbvh\update.rs:252:9
     test_qbvh_random_operations(0x23fc68663e15e9e2, 100, false, None, 0.55, 200);
 }
 
 #[test]
 fn test_case_qbvh_2() {
-    // thread 'partitioning::qbvh::update::tests::test_case_qbvh' panicked at 'failed for 977', crates\parry2d\../../src\partitioning\qbvh\update.rs:203:21
+    // thread 'partitioning::qbvh::update::tests::test_case_qbvh' panicked at 'failed for 977', crates\barry2d\../../src\partitioning\qbvh\update.rs:203:21
     test_qbvh_random_operations(0xd758a3c214dc3866, 2_406, false, None, 0.55, 1000);
 }
 
 #[test]
 fn test_case_qbvh_3() {
-    // thread 'partitioning::qbvh::update::tests::test_case_qbvh_3' panicked at 'attempt to add with overflow', crates\parry2d\../../src\partitioning\qbvh\update.rs:363:54
+    // thread 'partitioning::qbvh::update::tests::test_case_qbvh_3' panicked at 'attempt to add with overflow', crates\barry2d\../../src\partitioning\qbvh\update.rs:363:54
     test_qbvh_random_operations(0x93bcaea3b92a9bfe, 100, false, None, 0.53, 100);
 }
 
