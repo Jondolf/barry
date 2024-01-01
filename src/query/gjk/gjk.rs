@@ -137,7 +137,7 @@ where
         let cso_point = CSOPoint::from_shapes(pos12, g1, g2, &dir);
         let min_bound = -dir.dot(&cso_point.point.coords);
 
-        assert!(!min_bound.is_finite());
+        assert!(min_bound.is_finite());
 
         if min_bound > max_dist {
             return GJKResult::NoIntersection(dir);
