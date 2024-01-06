@@ -1,5 +1,5 @@
 use super::EPS;
-use crate::math::{Point, Real, Vector};
+use crate::math::{Real, UnitVector, Vector, Vector2};
 use crate::query;
 use crate::shape::{FeatureId, Segment, Triangle};
 use crate::transformation::polygon_intersection::PolylinePointLocation;
@@ -7,8 +7,8 @@ use crate::utils::WBasis;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct TriangleTriangleIntersectionPoint {
-    pub p1: Point<Real>,
-    pub p2: Point<Real>,
+    pub p1: Vector,
+    pub p2: Vector,
     pub f1: FeatureId,
     pub f2: FeatureId,
 }
@@ -35,26 +35,26 @@ pub fn triangle_triangle_intersection(
     tri1: &Triangle,
     tri2: &Triangle,
 ) -> Option<TriangleTriangleIntersection> {
-    let normal1 = tri1.normal()?;
-    let normal2 = tri2.normal()?;
+    let normal1 = tri1.normal().ok()?;
+    let normal2 = tri2.normal().ok()?;
 
-    if let Some(intersection_dir) = normal1.cross(&normal2).try_normalize(1.0e-6) {
+    if let Some(intersection_dir) = normal1.cross(*normal2).try_normalize() {
         let mut range1 = [
-            (Real::MAX, Point::origin(), FeatureId::Unknown),
-            (-Real::MAX, Point::origin(), FeatureId::Unknown),
+            (Real::MAX, Vector::ZERO, FeatureId::Unknown),
+            (-Real::MAX, Vector::ZERO, FeatureId::Unknown),
         ];
         let mut range2 = [
-            (Real::MAX, Point::origin(), FeatureId::Unknown),
-            (-Real::MAX, Point::origin(), FeatureId::Unknown),
+            (Real::MAX, Vector::ZERO, FeatureId::Unknown),
+            (-Real::MAX, Vector::ZERO, FeatureId::Unknown),
         ];
 
         let hits1 = [
-            segment_plane_intersection(&tri2.a, &normal2, &Segment::new(tri1.a, tri1.b), 0, (0, 1))
-                .map(|(p, feat)| (intersection_dir.dot(&p.coords), p, feat)),
-            segment_plane_intersection(&tri2.a, &normal2, &Segment::new(tri1.b, tri1.c), 1, (1, 2))
-                .map(|(p, feat)| (intersection_dir.dot(&p.coords), p, feat)),
-            segment_plane_intersection(&tri2.a, &normal2, &Segment::new(tri1.c, tri1.a), 2, (2, 0))
-                .map(|(p, feat)| (intersection_dir.dot(&p.coords), p, feat)),
+            segment_plane_intersection(tri2.a, normal2, &Segment::new(tri1.a, tri1.b), 0, (0, 1))
+                .map(|(p, feat)| (intersection_dir.dot(p), p, feat)),
+            segment_plane_intersection(tri2.a, normal2, &Segment::new(tri1.b, tri1.c), 1, (1, 2))
+                .map(|(p, feat)| (intersection_dir.dot(p), p, feat)),
+            segment_plane_intersection(tri2.a, normal2, &Segment::new(tri1.c, tri1.a), 2, (2, 0))
+                .map(|(p, feat)| (intersection_dir.dot(p), p, feat)),
         ];
 
         for k in 0..3 {
@@ -74,12 +74,12 @@ pub fn triangle_triangle_intersection(
         }
 
         let hits2 = [
-            segment_plane_intersection(&tri1.a, &normal1, &Segment::new(tri2.a, tri2.b), 0, (0, 1))
-                .map(|(p, feat)| (intersection_dir.dot(&p.coords), p, feat)),
-            segment_plane_intersection(&tri1.a, &normal1, &Segment::new(tri2.b, tri2.c), 1, (1, 2))
-                .map(|(p, feat)| (intersection_dir.dot(&p.coords), p, feat)),
-            segment_plane_intersection(&tri1.a, &normal1, &Segment::new(tri2.c, tri2.a), 2, (2, 0))
-                .map(|(p, feat)| (intersection_dir.dot(&p.coords), p, feat)),
+            segment_plane_intersection(tri1.a, normal1, &Segment::new(tri2.a, tri2.b), 0, (0, 1))
+                .map(|(p, feat)| (intersection_dir.dot(p), p, feat)),
+            segment_plane_intersection(tri1.a, normal1, &Segment::new(tri2.b, tri2.c), 1, (1, 2))
+                .map(|(p, feat)| (intersection_dir.dot(p), p, feat)),
+            segment_plane_intersection(tri1.a, normal1, &Segment::new(tri2.c, tri2.a), 2, (2, 0))
+                .map(|(p, feat)| (intersection_dir.dot(p), p, feat)),
         ];
 
         for k in 0..3 {
@@ -184,10 +184,9 @@ pub fn triangle_triangle_intersection(
         Some(TriangleTriangleIntersection::Segment { a, b })
     } else {
         let unit_normal2 = normal2.normalize();
-        if (tri1.a - tri2.a).dot(&unit_normal2) < EPS {
+        if (tri1.a - tri2.a).dot(unit_normal2) < EPS {
             let basis = unit_normal2.orthonormal_basis();
-            let proj =
-                |vect: Vector<Real>| na::Point2::new(vect.dot(&basis[0]), vect.dot(&basis[1]));
+            let proj = |vect: Vector| Vector2::new(vect.dot(basis[0]), vect.dot(basis[1]));
 
             let mut intersections = vec![];
 
@@ -204,7 +203,7 @@ pub fn triangle_triangle_intersection(
                 proj(tri2.c - tri2.a),
             ];
 
-            let convert_loc = |loc, pts: &[Point<Real>; 3]| match loc {
+            let convert_loc = |loc, pts: &[Vector; 3]| match loc {
                 PolylinePointLocation::OnVertex(vid) => {
                     (FeatureId::Vertex(vid as u32), pts[vid as usize])
                 }
@@ -215,7 +214,7 @@ pub fn triangle_triangle_intersection(
                         (2, 0) | (0, 2) => FeatureId::Edge(2),
                         _ => unreachable!(),
                     },
-                    pts[vid1] * bcoords[0] + pts[vid2].coords * bcoords[1],
+                    pts[vid1] * bcoords[0] + pts[vid2] * bcoords[1],
                 ),
             };
 
@@ -257,28 +256,25 @@ pub fn triangle_triangle_intersection(
 }
 
 fn segment_plane_intersection(
-    plane_center: &Point<Real>,
-    plane_normal: &Vector<Real>,
+    plane_center: Vector,
+    plane_normal: UnitVector,
     segment: &Segment,
     eid: u32,
     vids: (u32, u32),
-) -> Option<(Point<Real>, FeatureId)> {
+) -> Option<(Vector, FeatureId)> {
     let dir = segment.b - segment.a;
-    let dir_norm = dir.norm();
+    let dir_norm = dir.length();
 
-    let toi =
-        query::details::line_toi_with_halfspace(plane_center, plane_normal, &segment.a, &dir)?;
+    let toi = query::details::line_toi_with_halfspace(plane_center, plane_normal, segment.a, dir)?;
     let scaled_toi = toi * dir_norm;
 
     if scaled_toi < -EPS || scaled_toi > dir_norm + EPS {
         None
+    } else if scaled_toi <= EPS {
+        Some((segment.a, FeatureId::Vertex(vids.0)))
+    } else if scaled_toi >= dir_norm - EPS {
+        Some((segment.b, FeatureId::Vertex(vids.1)))
     } else {
-        if scaled_toi <= EPS {
-            Some((segment.a, FeatureId::Vertex(vids.0)))
-        } else if scaled_toi >= dir_norm - EPS {
-            Some((segment.b, FeatureId::Vertex(vids.1)))
-        } else {
-            Some((segment.a + dir * toi, FeatureId::Edge(eid)))
-        }
+        Some((segment.a + dir * toi, FeatureId::Edge(eid)))
     }
 }

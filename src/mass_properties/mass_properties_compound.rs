@@ -4,10 +4,10 @@ use crate::shape::SharedShape;
 
 impl MassProperties {
     /// Computes the mass properties of a compound shape.
-    pub fn from_compound(density: Real, shapes: &[(Isometry<Real>, SharedShape)]) -> Self {
+    pub fn from_compound(density: Real, shapes: &[(Isometry, SharedShape)]) -> Self {
         shapes
             .iter()
-            .map(|s| s.1.mass_properties(density).transform_by(&s.0))
+            .map(|s| s.1.mass_properties(density).transform_by(s.0))
             .sum()
     }
 }

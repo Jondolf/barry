@@ -7,7 +7,7 @@ use crate::shape::{Cuboid, Shape, Triangle};
 
 /// Computes the contact manifold between a cuboid and a triangle represented as `Shape` trait-objects.
 pub fn contact_manifold_cuboid_triangle_shapes<ManifoldData, ContactData>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     shape1: &dyn Shape,
     shape2: &dyn Shape,
     prediction: Real,
@@ -18,7 +18,7 @@ pub fn contact_manifold_cuboid_triangle_shapes<ManifoldData, ContactData>(
     if let (Some(cuboid1), Some(triangle2)) = (shape1.as_cuboid(), shape2.as_triangle()) {
         contact_manifold_cuboid_triangle(
             pos12,
-            &pos12.inverse(),
+            pos12.inverse(),
             cuboid1,
             triangle2,
             prediction,
@@ -27,7 +27,7 @@ pub fn contact_manifold_cuboid_triangle_shapes<ManifoldData, ContactData>(
         );
     } else if let (Some(triangle1), Some(cuboid2)) = (shape1.as_triangle(), shape2.as_cuboid()) {
         contact_manifold_cuboid_triangle(
-            &pos12.inverse(),
+            pos12.inverse(),
             pos12,
             cuboid2,
             triangle1,
@@ -40,8 +40,8 @@ pub fn contact_manifold_cuboid_triangle_shapes<ManifoldData, ContactData>(
 
 /// Computes the contact manifold between a cuboid and a triangle.
 pub fn contact_manifold_cuboid_triangle<'a, ManifoldData, ContactData>(
-    pos12: &Isometry<Real>,
-    pos21: &Isometry<Real>,
+    pos12: Isometry,
+    pos21: Isometry,
     cuboid1: &'a Cuboid,
     triangle2: &'a Triangle,
     prediction: Real,
@@ -80,7 +80,7 @@ pub fn contact_manifold_cuboid_triangle<'a, ManifoldData, ContactData>(
      *
      */
     #[cfg(feature = "dim2")]
-    let sep3 = (-Real::MAX, Vector::x()); // This case does not exist in 2D.
+    let sep3 = (-Real::MAX, Vector::X); // This case does not exist in 2D.
     #[cfg(feature = "dim3")]
     let sep3 = sat::cuboid_triangle_find_local_separating_edge_twoway(cuboid1, triangle2, pos12);
     if sep3.0 > prediction {
@@ -123,15 +123,7 @@ pub fn contact_manifold_cuboid_triangle<'a, ManifoldData, ContactData>(
     manifold.clear();
 
     PolygonalFeature::contacts(
-        pos12,
-        pos21,
-        &best_sep.1,
-        &normal2,
-        &feature1,
-        &feature2,
-        prediction,
-        manifold,
-        flipped,
+        pos12, pos21, best_sep.1, normal2, &feature1, &feature2, prediction, manifold, flipped,
     );
 
     if flipped {

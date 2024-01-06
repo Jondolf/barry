@@ -1,14 +1,12 @@
-use crate::math::{Isometry, Real, Vector};
+use crate::math::{Isometry, Real, UnitVector};
 use crate::query::epa::EPA;
 use crate::query::gjk::{self, CSOPoint, GJKResult, VoronoiSimplex};
 use crate::query::Contact;
 use crate::shape::SupportMap;
 
-use na::Unit;
-
 /// Contact between support-mapped shapes (`Cuboid`, `ConvexHull`, etc.)
 pub fn contact_support_map_support_map<G1: ?Sized, G2: ?Sized>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     g1: &G1,
     g2: &G2,
     prediction: Real,
@@ -20,9 +18,9 @@ where
     let simplex = &mut VoronoiSimplex::new();
     match contact_support_map_support_map_with_params(pos12, g1, g2, prediction, simplex, None) {
         GJKResult::ClosestPoints(point1, point2_1, normal1) => {
-            let dist = (point2_1 - point1).dot(&normal1);
-            let point2 = pos12.inverse_transform_point(&point2_1);
-            let normal2 = pos12.inverse_transform_unit_vector(&-normal1);
+            let dist = (point2_1 - point1).dot(*normal1);
+            let point2 = pos12.inverse_transform_point(point2_1);
+            let normal2 = pos12.rotation.inverse() * -normal1;
             Some(Contact::new(point1, point2, normal1, normal2, dist))
         }
         GJKResult::NoIntersection(_) => None,
@@ -38,12 +36,12 @@ where
 /// subsequent executions of the algorithm. It is also the contact
 /// normal (that points toward the outside of the first solid).
 pub fn contact_support_map_support_map_with_params<G1: ?Sized, G2: ?Sized>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     g1: &G1,
     g2: &G2,
     prediction: Real,
     simplex: &mut VoronoiSimplex,
-    init_dir: Option<Unit<Vector<Real>>>,
+    init_dir: Option<UnitVector>,
 ) -> GJKResult
 where
     G1: SupportMap,
@@ -51,15 +49,16 @@ where
 {
     let dir = if let Some(init_dir) = init_dir {
         init_dir
-    } else if let Some(init_dir) =
-        Unit::try_new(pos12.translation.vector, crate::math::DEFAULT_EPSILON)
+    } else if let Ok(init_dir) =
+        UnitVector::new_with_min(pos12.translation, crate::math::DEFAULT_EPSILON)
     {
         init_dir
     } else {
-        Vector::x_axis()
+        UnitVector::X
     };
 
-    simplex.reset(CSOPoint::from_shapes(pos12, g1, g2, &dir));
+    //println!("{:?}", simplex);
+    simplex.reset(CSOPoint::from_shapes(pos12, g1, g2, dir));
 
     let cpts = gjk::closest_points(pos12, g1, g2, prediction, true, simplex);
     if cpts != GJKResult::Intersection {
@@ -73,5 +72,5 @@ where
     }
 
     // Everything failed
-    GJKResult::NoIntersection(Vector::x_axis())
+    GJKResult::NoIntersection(UnitVector::X)
 }

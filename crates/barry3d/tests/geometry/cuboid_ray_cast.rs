@@ -1,8 +1,9 @@
 // https://github.com/dimforge/barry/issues/242
 
-use na::{Isometry3, Point3, Translation3, UnitQuaternion, Vector3};
+use barry3d::math::{Isometry3, Rotation3, Vector3};
 use barry3d::query::Ray;
 use barry3d::shape::{Ball, Cuboid, Shape};
+use bevy_math::Quat;
 
 fn run_test<S>(name: &str, shape: S)
 where
@@ -11,27 +12,25 @@ where
     let mut rng = oorandom::Rand32::new(42);
 
     for _ in 0..1000 {
-        let ray_origin = Point3::from(Vector3::from_fn(|_, _| rng.rand_float()).normalize() * 5.0);
-        let ray = Ray::new(ray_origin, Point3::origin() - ray_origin);
+        let ray_origin =
+            Vector3::new(rng.rand_float(), rng.rand_float(), rng.rand_float()).normalize() * 5.0;
+        let ray = Ray::new(ray_origin, Vector3::ZERO - ray_origin);
 
         let rotation = if rng.rand_float() < 0.01 {
-            UnitQuaternion::identity()
+            Quat::IDENTITY
         } else {
-            na::Unit::try_new(
-                na::Quaternion::new(
-                    rng.rand_float(),
-                    rng.rand_float(),
-                    rng.rand_float(),
-                    rng.rand_float(),
-                ),
-                1.0e-5,
+            Quat::from_xyzw(
+                rng.rand_float(),
+                rng.rand_float(),
+                rng.rand_float(),
+                rng.rand_float(),
             )
-            .unwrap_or(UnitQuaternion::identity())
+            .normalize()
         };
-        let position = Isometry3::from_parts(Translation3::identity(), rotation);
+        let position = Isometry3::from_rotation(Rotation3(rotation));
 
         let intersection = shape
-            .cast_ray_and_get_normal(&position, &ray, std::f32::MAX, true)
+            .cast_ray_and_get_normal(position, &ray, std::f32::MAX, true)
             .expect(&format!(
                 "Ray {:?} did not hit Shape {} rotated with {:?}",
                 ray, name, rotation
@@ -42,18 +41,18 @@ where
         let point_nudged_out = point + intersection.normal * 0.001;
 
         assert!(
-            shape.contains_point(&position, &point_nudged_in),
+            shape.contains_point(position, point_nudged_in),
             "Shape {} rotated with {:#?} does not contain point nudged in {:#?}",
             name,
-            rotation.axis(),
+            rotation.to_axis_angle().0,
             point_nudged_in,
         );
 
         assert!(
-            !shape.contains_point(&position, &point_nudged_out),
+            !shape.contains_point(position, point_nudged_out),
             "Shape {} rotated with {:#?} does contains point nudged out {:#?}",
             name,
-            rotation.axis(),
+            rotation.to_axis_angle().0,
             point_nudged_out,
         );
 
@@ -61,14 +60,14 @@ where
 
         assert!(
             shape
-                .cast_ray_and_get_normal(&position, &new_ray, std::f32::MAX, true)
+                .cast_ray_and_get_normal(position, &new_ray, std::f32::MAX, true)
                 .is_none(),
             "Ray {:#?} from outside Shape {} rotated with {:#?} did hit at t={}",
             ray,
             name,
             rotation,
             shape
-                .cast_ray_and_get_normal(&position, &new_ray, std::f32::MAX, true)
+                .cast_ray_and_get_normal(position, &new_ray, std::f32::MAX, true)
                 .expect("recurring ray cast produced a different answer")
                 .toi
         );

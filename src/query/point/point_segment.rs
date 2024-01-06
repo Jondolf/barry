@@ -1,18 +1,15 @@
-use crate::math::{Point, Real};
+use crate::math::Vector;
 use crate::query::{PointProjection, PointQuery, PointQueryWithLocation};
 use crate::shape::{FeatureId, Segment, SegmentPointLocation};
 
 impl PointQuery for Segment {
     #[inline]
-    fn project_local_point(&self, pt: &Point<Real>, solid: bool) -> PointProjection {
+    fn project_local_point(&self, pt: Vector, solid: bool) -> PointProjection {
         self.project_local_point_and_get_location(pt, solid).0
     }
 
     #[inline]
-    fn project_local_point_and_get_feature(
-        &self,
-        pt: &Point<Real>,
-    ) -> (PointProjection, FeatureId) {
+    fn project_local_point_and_get_feature(&self, pt: Vector) -> (PointProjection, FeatureId) {
         let (proj, loc) = self.project_local_point_and_get_location(pt, false);
         let feature = match loc {
             SegmentPointLocation::OnVertex(i) => FeatureId::Vertex(i),
@@ -20,8 +17,8 @@ impl PointQuery for Segment {
                 #[cfg(feature = "dim2")]
                 {
                     let dir = self.scaled_direction();
-                    let dpt = *pt - proj.point;
-                    if dpt.perp(&dir) >= 0.0 {
+                    let dpt = pt - proj.point;
+                    if dpt.perp_dot(dir) >= 0.0 {
                         FeatureId::Face(0)
                     } else {
                         FeatureId::Face(1)
@@ -48,14 +45,13 @@ impl PointQueryWithLocation for Segment {
     #[inline]
     fn project_local_point_and_get_location(
         &self,
-        pt: &Point<Real>,
+        pt: Vector,
         _: bool,
     ) -> (PointProjection, Self::Location) {
         let ab = self.b - self.a;
         let ap = pt - self.a;
-        let ab_ap = ab.dot(&ap);
-        let sqnab = ab.norm_squared();
-        let _1 = 1.0;
+        let ab_ap = ab.dot(ap);
+        let sqnab = ab.length_squared();
 
         let proj;
         let location;
@@ -73,13 +69,13 @@ impl PointQueryWithLocation for Segment {
 
             // Voronoï region of the segment interior.
             let u = ab_ap / sqnab;
-            let bcoords = [_1 - u, u];
+            let bcoords = [1.0 - u, u];
             location = SegmentPointLocation::OnEdge(bcoords);
             proj = self.a + ab * u;
         }
 
         // FIXME: is this acceptable?
-        let inside = relative_eq!(proj, *pt);
+        let inside = relative_eq!(proj, pt);
 
         (PointProjection::new(inside, proj), location)
     }

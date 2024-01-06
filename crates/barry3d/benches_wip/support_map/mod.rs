@@ -1,5 +1,5 @@
 use crate::common::{generate, unref};
-use na::{Isometry3, Vector3};
+use barry3d::math::{Isometry3, Vector3};
 use barry3d::shape::SupportMap;
 use barry3d::shape::{Ball, Capsule, Cone, ConvexHull, Cuboid, Cylinder, Segment, Triangle};
 use rand::SeedableRng;

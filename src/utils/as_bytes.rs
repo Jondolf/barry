@@ -1,8 +1,7 @@
 use std::mem;
 use std::slice;
 
-use na::{Point2, Point3, Vector2, Vector3};
-use simba::scalar::RealField;
+use crate::math::{Real, Vector2, Vector3};
 
 /// Trait that transforms thing to a slice of u8.
 pub trait AsBytes {
@@ -12,11 +11,11 @@ pub trait AsBytes {
 
 macro_rules! generic_as_bytes_impl(
     ($t: ident, $dimension: expr) => (
-        impl<N: RealField> AsBytes for $t<N> {
+        impl AsBytes for $t {
             #[inline(always)]
             fn as_bytes<'a>(&'a self) -> &'a [u8] {
                 unsafe {
-                    slice::from_raw_parts(mem::transmute(self), mem::size_of::<N>() * $dimension)
+                    slice::from_raw_parts(mem::transmute(self), mem::size_of::<Real>() * $dimension)
                 }
             }
         }
@@ -24,8 +23,6 @@ macro_rules! generic_as_bytes_impl(
 );
 
 generic_as_bytes_impl!(Vector2, 2);
-generic_as_bytes_impl!(Point2, 2);
 generic_as_bytes_impl!(Vector3, 3);
-generic_as_bytes_impl!(Point3, 3);
 
 // FIXME: implement for all `T: Copy` instead?

@@ -4,7 +4,7 @@ use crate::shape::{HalfSpace, PackedFeatureId, PolygonalFeature, PolygonalFeatur
 
 /// Computes the contact manifold between a convex shape and a ball, both represented as a `Shape` trait-object.
 pub fn contact_manifold_halfspace_pfm_shapes<ManifoldData, ContactData>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     shape1: &dyn Shape,
     shape2: &dyn Shape,
     prediction: Real,
@@ -28,7 +28,7 @@ pub fn contact_manifold_halfspace_pfm_shapes<ManifoldData, ContactData>(
         (shape1.as_polygonal_feature_map(), shape2.as_halfspace())
     {
         contact_manifold_halfspace_pfm(
-            &pos12.inverse(),
+            pos12.inverse(),
             halfspace2,
             pfm1,
             border_radius1,
@@ -41,7 +41,7 @@ pub fn contact_manifold_halfspace_pfm_shapes<ManifoldData, ContactData>(
 
 /// Computes the contact manifold between a convex shape and a ball.
 pub fn contact_manifold_halfspace_pfm<'a, ManifoldData, ContactData, S2>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     halfspace1: &'a HalfSpace,
     pfm2: &'a S2,
     border_radius2: Real,
@@ -52,9 +52,9 @@ pub fn contact_manifold_halfspace_pfm<'a, ManifoldData, ContactData, S2>(
     S2: ?Sized + PolygonalFeatureMap,
     ContactData: Default + Copy,
 {
-    let normal1_2 = pos12.inverse_transform_unit_vector(&halfspace1.normal);
+    let normal1_2 = pos12.rotation.inverse() * halfspace1.normal;
     let mut feature2 = PolygonalFeature::default();
-    pfm2.local_support_feature(&-normal1_2, &mut feature2);
+    pfm2.local_support_feature(-normal1_2, &mut feature2);
 
     // We do this clone to perform contact tracking and transfer impulses.
     // FIXME: find a more efficient way of doing this.
@@ -63,7 +63,7 @@ pub fn contact_manifold_halfspace_pfm<'a, ManifoldData, ContactData, S2>(
     for i in 0..feature2.num_vertices {
         let vtx2 = feature2.vertices[i];
         let vtx2_1 = pos12 * vtx2;
-        let dist_to_plane = vtx2_1.coords.dot(&halfspace1.normal);
+        let dist_to_plane = vtx2_1.dot(*halfspace1.normal);
 
         if dist_to_plane - border_radius2 <= prediction {
             // Keep this contact point.

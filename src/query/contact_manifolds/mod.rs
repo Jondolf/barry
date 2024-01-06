@@ -5,14 +5,14 @@ pub use self::contact_manifolds_ball_ball::{
 pub use self::contact_manifolds_capsule_capsule::{
     contact_manifold_capsule_capsule, contact_manifold_capsule_capsule_shapes,
 };
+pub use self::contact_manifolds_composite_shape_composite_shape::contact_manifolds_composite_shape_composite_shape;
+pub use self::contact_manifolds_composite_shape_shape::contact_manifolds_composite_shape_shape;
 pub use self::contact_manifolds_convex_ball::{
     contact_manifold_convex_ball, contact_manifold_convex_ball_shapes,
 };
 // pub use self::contact_manifolds_cuboid_capsule::{
 //     contact_manifold_cuboid_capsule, contact_manifold_cuboid_capsule_shapes,
 // };
-pub use self::contact_manifolds_composite_shape_composite_shape::contact_manifolds_composite_shape_composite_shape;
-pub use self::contact_manifolds_composite_shape_shape::contact_manifolds_composite_shape_shape;
 pub use self::contact_manifolds_cuboid_cuboid::{
     contact_manifold_cuboid_cuboid, contact_manifold_cuboid_cuboid_shapes,
 };
@@ -36,7 +36,7 @@ pub use self::contact_manifolds_workspace::{
     ContactManifoldsWorkspace, TypedWorkspaceData, WorkspaceData,
 };
 
-pub(self) use {
+use {
     self::contact_manifolds_composite_shape_composite_shape::CompositeShapeCompositeShapeContactManifoldsWorkspace,
     self::contact_manifolds_composite_shape_shape::CompositeShapeShapeContactManifoldsWorkspace,
     self::contact_manifolds_heightfield_composite_shape::HeightFieldCompositeShapeContactManifoldsWorkspace,

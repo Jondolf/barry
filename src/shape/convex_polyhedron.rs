@@ -1,13 +1,7 @@
-use crate::math::{Point, Real, Vector, DIM};
+use crate::math::{self, Real, UVector2, UnitVector, Vector, DIM};
 use crate::shape::{FeatureId, PackedFeatureId, PolygonalFeature, PolygonalFeatureMap, SupportMap};
-// use crate::transformation;
 use crate::utils::hashmap::{Entry, HashMap};
 use crate::utils::{self, SortedPair};
-use na::{self, ComplexField, Point2, Unit};
-use std::f64;
-
-#[cfg(not(feature = "std"))]
-use na::ComplexField; // for .abs()
 
 #[cfg(feature = "rkyv")]
 use rkyv::{bytecheck, CheckBytes};
@@ -32,9 +26,9 @@ pub struct Vertex {
 )]
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Edge {
-    pub vertices: Point2<u32>,
-    pub faces: Point2<u32>,
-    pub dir: Unit<Vector<Real>>,
+    pub vertices: UVector2,
+    pub faces: UVector2,
+    pub dir: UnitVector,
     deleted: bool,
 }
 
@@ -58,7 +52,7 @@ impl Edge {
 pub struct Face {
     pub first_vertex_or_edge: u32,
     pub num_vertices_or_edges: u32,
-    pub normal: Unit<Vector<Real>>,
+    pub normal: UnitVector,
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -71,7 +65,7 @@ pub struct Face {
 struct Triangle {
     vertices: [u32; 3],
     edges: [u32; 3],
-    normal: Vector<Real>,
+    normal: Vector,
     parent_face: Option<u32>,
     is_degenerate: bool,
 }
@@ -97,7 +91,7 @@ impl Triangle {
 #[derive(PartialEq, Debug, Clone)]
 /// A convex polyhedron without degenerate faces.
 pub struct ConvexPolyhedron {
-    points: Vec<Point<Real>>,
+    points: Vec<Vector>,
     vertices: Vec<Vertex>,
     faces: Vec<Face>,
     edges: Vec<Edge>,
@@ -116,7 +110,7 @@ impl ConvexPolyhedron {
     ///
     /// This explicitly computes the convex hull of the given set of points. Use
     /// Returns `None` if the convex hull computation failed.
-    pub fn from_convex_hull(points: &[Point<Real>]) -> Option<ConvexPolyhedron> {
+    pub fn from_convex_hull(points: &[Vector]) -> Option<ConvexPolyhedron> {
         let (vertices, indices) = crate::transformation::convex_hull(points);
         Self::from_convex_mesh(vertices, &indices)
     }
@@ -130,10 +124,10 @@ impl ConvexPolyhedron {
     ///
     /// Retruns `None` if he given solid is not manifold (contains t-junctions, not closed, etc.)
     pub fn from_convex_mesh(
-        points: Vec<Point<Real>>,
+        points: Vec<Vector>,
         indices: &[[u32; DIM]],
     ) -> Option<ConvexPolyhedron> {
-        let eps = ComplexField::sqrt(crate::math::DEFAULT_EPSILON);
+        let eps = crate::math::DEFAULT_EPSILON.sqrt();
 
         let mut vertices = Vec::new();
         let mut edges = Vec::<Edge>::new();
@@ -186,32 +180,30 @@ impl ConvexPolyhedron {
                     Entry::Vacant(e) => {
                         edges_id[i1] = *e.insert(edges.len() as u32);
 
-                        let dir = Unit::try_new(
-                            points[idx[i2] as usize] - points[idx[i1] as usize],
-                            crate::math::DEFAULT_EPSILON,
-                        );
+                        let dir =
+                            UnitVector::new(points[idx[i2] as usize] - points[idx[i1] as usize]);
 
                         edges.push(Edge {
-                            vertices: Point2::new(idx[i1], idx[i2]),
-                            faces: Point2::new(face_id as u32, u32::MAX),
-                            dir: dir.unwrap_or(Vector::x_axis()),
-                            deleted: dir.is_none(),
+                            vertices: UVector2::new(idx[i1], idx[i2]),
+                            faces: UVector2::new(face_id as u32, u32::MAX),
+                            dir: dir.as_ref().copied().unwrap_or(UnitVector::X),
+                            deleted: dir.is_err(),
                         });
                     }
                 }
             }
 
             let normal = utils::ccw_face_normal([
-                &points[idx[0] as usize],
-                &points[idx[1] as usize],
-                &points[idx[2] as usize],
+                points[idx[0] as usize],
+                points[idx[1] as usize],
+                points[idx[2] as usize],
             ]);
             let triangle = Triangle {
                 vertices: *idx,
                 edges: edges_id,
-                normal: normal.map(|n| *n).unwrap_or(Vector::zeros()),
+                normal: normal.as_ref().map(|n| **n).unwrap_or(Vector::ZERO),
                 parent_face: None,
-                is_degenerate: normal.is_none(),
+                is_degenerate: normal.is_err(),
             };
 
             triangles.push(triangle);
@@ -222,7 +214,7 @@ impl ConvexPolyhedron {
         for e in &mut edges {
             let tri1 = triangles.get(e.faces[0] as usize)?;
             let tri2 = triangles.get(e.faces[1] as usize)?;
-            if tri1.normal.dot(&tri2.normal) > 1.0 - eps {
+            if tri1.normal.dot(tri2.normal) > 1.0 - eps {
                 e.deleted = true;
             }
         }
@@ -239,7 +231,7 @@ impl ConvexPolyhedron {
                         let mut new_face = Face {
                             first_vertex_or_edge: edges_adj_to_face.len() as u32,
                             num_vertices_or_edges: 1,
-                            normal: Unit::new_unchecked(triangles[i].normal),
+                            normal: UnitVector::new(triangles[i].normal).unwrap(),
                         };
 
                         edges_adj_to_face.push(triangles[i].edges[j1]);
@@ -344,8 +336,7 @@ impl ConvexPolyhedron {
             v.num_adj_faces_or_edge = 0;
         }
 
-        for face_id in 0..faces.len() {
-            let face = &faces[face_id];
+        for (face_id, face) in faces.iter().enumerate() {
             let first_vid = face.first_vertex_or_edge;
             let last_vid = face.first_vertex_or_edge + face.num_vertices_or_edges;
 
@@ -388,15 +379,15 @@ impl ConvexPolyhedron {
             let p0 =
                 self.points[self.vertices_adj_to_face[face.first_vertex_or_edge as usize] as usize];
 
-            for v in &self.points {
-                assert!((v - p0).dot(face.normal.as_ref()) <= crate::math::DEFAULT_EPSILON);
+            for v in self.points.iter().copied() {
+                assert!((v - p0).dot(*face.normal) <= crate::math::DEFAULT_EPSILON);
             }
         }
     }
 
     /// The set of vertices of this convex polyhedron.
     #[inline]
-    pub fn points(&self) -> &[Point<Real>] {
+    pub fn points(&self) -> &[Vector] {
         &self.points[..]
     }
 
@@ -440,29 +431,23 @@ impl ConvexPolyhedron {
     ///
     /// Returns `None` if the result had degenerate normals (for example if
     /// the scaling factor along one axis is zero).
-    pub fn scaled(mut self, scale: &Vector<Real>) -> Option<Self> {
-        self.points
-            .iter_mut()
-            .for_each(|pt| pt.coords.component_mul_assign(scale));
+    pub fn scaled(mut self, scale: Vector) -> Option<Self> {
+        self.points.iter_mut().for_each(|pt| *pt *= scale);
 
         for f in &mut self.faces {
-            f.normal = Unit::try_new(f.normal.component_mul(scale), 0.0).unwrap_or(f.normal);
+            f.normal = UnitVector::new(*f.normal * scale).unwrap_or(f.normal);
         }
 
         for e in &mut self.edges {
-            e.dir = Unit::try_new(e.dir.component_mul(scale), 0.0).unwrap_or(e.dir);
+            e.dir = UnitVector::new(*e.dir * scale).unwrap_or(e.dir);
         }
 
         Some(self)
     }
 
-    fn support_feature_id_toward_eps(
-        &self,
-        local_dir: &Unit<Vector<Real>>,
-        eps: Real,
-    ) -> FeatureId {
-        let (seps, ceps) = ComplexField::sin_cos(eps);
-        let support_pt_id = utils::point_cloud_support_point_id(local_dir.as_ref(), &self.points);
+    fn support_feature_id_toward_eps(&self, local_dir: UnitVector, eps: Real) -> FeatureId {
+        let (seps, ceps) = eps.sin_cos();
+        let support_pt_id = utils::point_cloud_support_point_id(*local_dir, &self.points);
         let vertex = &self.vertices[support_pt_id];
 
         // Check faces.
@@ -470,7 +455,7 @@ impl ConvexPolyhedron {
             let face_id = self.faces_adj_to_vertex[(vertex.first_adj_face_or_edge + i) as usize];
             let face = &self.faces[face_id as usize];
 
-            if face.normal.dot(local_dir.as_ref()) >= ceps {
+            if face.normal.dot(*local_dir) >= ceps {
                 return FeatureId::Face(face_id);
             }
         }
@@ -480,7 +465,7 @@ impl ConvexPolyhedron {
             let edge_id = self.edges_adj_to_vertex[(vertex.first_adj_face_or_edge + i) as usize];
             let edge = &self.edges[edge_id as usize];
 
-            if edge.dir.dot(local_dir.as_ref()).abs() <= seps {
+            if edge.dir.dot(*local_dir).abs() <= seps {
                 return FeatureId::Edge(edge_id);
             }
         }
@@ -490,33 +475,36 @@ impl ConvexPolyhedron {
     }
 
     /// Computes the ID of the features with a normal that maximize the dot-product with `local_dir`.
-    pub fn support_feature_id_toward(&self, local_dir: &Unit<Vector<Real>>) -> FeatureId {
-        let eps: Real = na::convert::<f64, Real>(f64::consts::PI / 180.0);
+    pub fn support_feature_id_toward(&self, local_dir: UnitVector) -> FeatureId {
+        let eps: Real = math::real_consts::PI / 180.0;
         self.support_feature_id_toward_eps(local_dir, eps)
     }
 
     /// The normal of the given feature.
-    pub fn feature_normal(&self, feature: FeatureId) -> Option<Unit<Vector<Real>>> {
+    pub fn feature_normal(&self, feature: FeatureId) -> Option<UnitVector> {
         match feature {
             FeatureId::Face(id) => Some(self.faces[id as usize].normal),
             FeatureId::Edge(id) => {
                 let edge = &self.edges[id as usize];
-                Some(Unit::new_normalize(
-                    *self.faces[edge.faces[0] as usize].normal
-                        + *self.faces[edge.faces[1] as usize].normal,
-                ))
+                Some(
+                    UnitVector::new(
+                        *self.faces[edge.faces[0] as usize].normal
+                            + *self.faces[edge.faces[1] as usize].normal,
+                    )
+                    .unwrap(),
+                )
             }
             FeatureId::Vertex(id) => {
                 let vertex = &self.vertices[id as usize];
                 let first = vertex.first_adj_face_or_edge;
                 let last = vertex.first_adj_face_or_edge + vertex.num_adj_faces_or_edge;
-                let mut normal = Vector::zeros();
+                let mut normal = Vector::ZERO;
 
                 for face in &self.faces_adj_to_vertex[first as usize..last as usize] {
                     normal += *self.faces[*face as usize].normal
                 }
 
-                Some(Unit::new_normalize(normal))
+                Some(UnitVector::new(normal).unwrap())
             }
             FeatureId::Unknown => None,
         }
@@ -525,18 +513,18 @@ impl ConvexPolyhedron {
 
 impl SupportMap for ConvexPolyhedron {
     #[inline]
-    fn local_support_point(&self, dir: &Vector<Real>) -> Point<Real> {
+    fn local_support_point(&self, dir: Vector) -> Vector {
         utils::point_cloud_support_point(dir, self.points())
     }
 }
 
 impl PolygonalFeatureMap for ConvexPolyhedron {
-    fn local_support_feature(&self, dir: &Unit<Vector<Real>>, out_feature: &mut PolygonalFeature) {
+    fn local_support_feature(&self, dir: UnitVector, out_feature: &mut PolygonalFeature) {
         let mut best_fid = 0;
-        let mut best_dot = self.faces[0].normal.dot(dir);
+        let mut best_dot = self.faces[0].normal.dot(*dir);
 
         for (fid, face) in self.faces[1..].iter().enumerate() {
-            let new_dot = face.normal.dot(dir);
+            let new_dot = face.normal.dot(*dir);
 
             if new_dot > best_dot {
                 best_fid = fid + 1;
@@ -571,11 +559,11 @@ impl PolygonalFeatureMap for ConvexPolyhedron {
 
 /*
 impl ConvexPolyhedron for ConvexPolyhedron {
-    fn vertex(&self, id: FeatureId) -> Point<Real> {
+    fn vertex(&self, id: FeatureId) -> Vector {
         self.points[id.unwrap_vertex() as usize]
     }
 
-    fn edge(&self, id: FeatureId) -> (Point<Real>, Point<Real>, FeatureId, FeatureId) {
+    fn edge(&self, id: FeatureId) -> (Vector, Vector, FeatureId, FeatureId) {
         let edge = &self.edges[id.unwrap_edge() as usize];
         let v1 = edge.vertices[0];
         let v2 = edge.vertices[1];
@@ -609,17 +597,17 @@ impl ConvexPolyhedron for ConvexPolyhedron {
 
     fn support_face_toward(
         &self,
-        m: &Isometry<Real>,
-        dir: &Unit<Vector<Real>>,
+        m: Isometry,
+        dir: UnitVector,
         out: &mut ConvexPolygonalFeature,
     ) {
         let ls_dir = m.inverse_transform_vector(dir);
         let mut best_face = 0;
-        let mut max_dot = self.faces[0].normal.dot(&ls_dir);
+        let mut max_dot = self.faces[0].normal.dot(ls_dir);
 
         for i in 1..self.faces.len() {
             let face = &self.faces[i];
-            let dot = face.normal.dot(&ls_dir);
+            let dot = face.normal.dot(ls_dir);
 
             if dot > max_dot {
                 max_dot = dot;
@@ -633,8 +621,8 @@ impl ConvexPolyhedron for ConvexPolyhedron {
 
     fn support_feature_toward(
         &self,
-        transform: &Isometry<Real>,
-        dir: &Unit<Vector<Real>>,
+        transform: Isometry,
+        dir: UnitVector,
         angle: Real,
         out: &mut ConvexPolygonalFeature,
     ) {

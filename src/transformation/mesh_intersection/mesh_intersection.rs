@@ -1,9 +1,8 @@
 use super::{MeshIntersectionError, TriangleTriangleIntersection, EPS};
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{Isometry, Matrix2, Real, Vector, Vector2};
 use crate::query::{visitors::BoundingVolumeIntersectionsSimultaneousVisitor, PointQuery};
 use crate::shape::{FeatureId, TriMesh, Triangle};
 use crate::utils::WBasis;
-use na::{Point2, Vector2};
 use spade::{handles::FixedVertexHandle, ConstrainedDelaunayTriangulation, Triangulation as _};
 use std::collections::{HashMap, HashSet};
 
@@ -12,10 +11,10 @@ use std::collections::{HashMap, HashSet};
 /// The meshes must be oriented, have their half-edge topology computed, and must not be self-intersecting.
 /// The result mesh vertex coordinates are given in the local-space of `mesh1`.
 pub fn intersect_meshes(
-    pos1: &Isometry<Real>,
+    pos1: Isometry,
     mesh1: &TriMesh,
     flip1: bool,
-    pos2: &Isometry<Real>,
+    pos2: Isometry,
     mesh2: &TriMesh,
     flip2: bool,
 ) -> Result<Option<TriMesh>, MeshIntersectionError> {
@@ -52,7 +51,7 @@ pub fn intersect_meshes(
 
     for (fid1, fid2) in &intersections {
         let tri1 = mesh1.triangle(*fid1);
-        let tri2 = mesh2.triangle(*fid2).transformed(&pos12);
+        let tri2 = mesh2.triangle(*fid2).transformed(pos12);
 
         if super::triangle_triangle_intersection(&tri1, &tri2).is_some() {
             let _ = deleted_faces1.insert(*fid1);
@@ -61,7 +60,7 @@ pub fn intersect_meshes(
     }
 
     extract_connected_components(
-        &pos12,
+        pos12,
         mesh1,
         mesh2,
         flip2,
@@ -69,7 +68,7 @@ pub fn intersect_meshes(
         &mut new_indices1,
     );
     extract_connected_components(
-        &pos12.inverse(),
+        pos12.inverse(),
         mesh2,
         mesh1,
         flip1,
@@ -81,7 +80,7 @@ pub fn intersect_meshes(
     let mut new_indices12 = vec![];
 
     cut_and_triangulate_intersections(
-        &pos12,
+        pos12,
         mesh1,
         flip1,
         mesh2,
@@ -131,7 +130,7 @@ pub fn intersect_meshes(
     for idx12 in &mut new_indices12 {
         for k in 0..3 {
             let new_id = *index_map.entry(idx12[k]).or_insert_with(|| {
-                let vtx = unified_vertex(mesh1, mesh2, &new_vertices12, &pos12, idx12[k]);
+                let vtx = unified_vertex(mesh1, mesh2, &new_vertices12, pos12, idx12[k]);
                 new_vertices.push(vtx);
                 new_vertices.len() - 1
             });
@@ -158,7 +157,7 @@ pub fn intersect_meshes(
 }
 
 fn extract_connected_components(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     mesh1: &TriMesh,
     mesh2: &TriMesh,
     flip2: bool,
@@ -191,7 +190,7 @@ fn extract_connected_components(
                     let tri1 = mesh1.triangle(twin.face as u32);
 
                     if flip2
-                        ^ mesh2.contains_local_point(&pos12.inverse_transform_point(&tri1.center()))
+                        ^ mesh2.contains_local_point(pos12.inverse_transform_point(tri1.center()))
                     {
                         to_visit.push(twin.face);
                     }
@@ -237,7 +236,7 @@ fn extract_connected_components(
                 let repr_pt = mesh1.triangle(repr_face).center();
                 let indices = mesh1.indices();
 
-                if flip2 ^ mesh2.contains_local_point(&pos12.inverse_transform_point(&repr_pt)) {
+                if flip2 ^ mesh2.contains_local_point(pos12.inverse_transform_point(repr_pt)) {
                     new_indices1.extend(
                         cc.grouped_faces[range[0]..range[1]]
                             .iter()
@@ -250,7 +249,7 @@ fn extract_connected_components(
         // Deal with the case where there is no intersection between the meshes.
         let repr_pt = mesh1.triangle(0).center();
 
-        if flip2 ^ mesh2.contains_local_point(&pos12.inverse_transform_point(&repr_pt)) {
+        if flip2 ^ mesh2.contains_local_point(pos12.inverse_transform_point(repr_pt)) {
             new_indices1.extend_from_slice(mesh1.indices());
         }
     }
@@ -263,11 +262,11 @@ struct SpadeInfo {
 
 struct Triangulation {
     delaunay: ConstrainedDelaunayTriangulation<spade::Point2<Real>>,
-    basis: [Vector<Real>; 2],
+    basis: [Vector; 2],
     vtx_handles: [FixedVertexHandle; 3],
-    ref_pt: Point<Real>,
-    ref_proj: [Point2<Real>; 3],
-    normalization: na::Matrix2<Real>,
+    ref_pt: Vector,
+    ref_proj: [Vector2; 3],
+    normalization: Matrix2,
 }
 
 impl Triangulation {
@@ -280,16 +279,17 @@ impl Triangulation {
         let ac = triangle.c - triangle.a;
 
         let mut ref_proj = [
-            Point2::origin(),
-            Point2::new(ab.dot(&basis[0]), ab.dot(&basis[1])),
-            Point2::new(ac.dot(&basis[0]), ac.dot(&basis[1])),
+            Vector2::ZERO,
+            Vector2::new(ab.dot(basis[0]), ab.dot(basis[1])),
+            Vector2::new(ac.dot(basis[0]), ac.dot(basis[1])),
         ];
 
-        let normalization_inv =
-            na::Matrix2::from_columns(&[ref_proj[1].coords, ref_proj[2].coords]);
-        let normalization = normalization_inv
-            .try_inverse()
-            .unwrap_or(na::Matrix2::identity());
+        let normalization_inv = Matrix2::from_cols(ref_proj[1], ref_proj[2]);
+        let mut normalization = normalization_inv.inverse();
+
+        if !normalization.is_finite() || normalization == Matrix2::ZERO {
+            normalization = Matrix2::IDENTITY;
+        };
 
         for k in 0..3 {
             ref_proj[k] = normalization * ref_proj[k];
@@ -317,10 +317,10 @@ impl Triangulation {
         }
     }
 
-    fn project(&self, pt: Point<Real>, orig_fid: FeatureId) -> spade::Point2<Real> {
+    fn project(&self, pt: Vector, orig_fid: FeatureId) -> spade::Point2<Real> {
         let dpt = pt - self.ref_pt;
         let mut proj =
-            self.normalization * Point2::new(dpt.dot(&self.basis[0]), dpt.dot(&self.basis[1]));
+            self.normalization * Vector2::new(dpt.dot(self.basis[0]), dpt.dot(self.basis[1]));
 
         match orig_fid {
             FeatureId::Edge(i) => {
@@ -328,7 +328,7 @@ impl Triangulation {
                 let b = self.ref_proj[(i as usize + 1) % 3];
                 let ab = b - a;
                 let ap = proj - a;
-                let param = ab.dot(&ap) / ab.norm_squared();
+                let param = ab.dot(ap) / ab.length_squared();
                 let shift = Vector2::new(ab.y, -ab.x);
 
                 // NOTE: if we have intersections exactly on the edge, we nudge
@@ -349,12 +349,12 @@ impl Triangulation {
 }
 
 fn cut_and_triangulate_intersections(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     mesh1: &TriMesh,
     flip1: bool,
     mesh2: &TriMesh,
     flip2: bool,
-    new_vertices12: &mut Vec<Point<Real>>,
+    new_vertices12: &mut Vec<Vector>,
     new_indices12: &mut Vec<[u32; 3]>,
     intersections: &mut Vec<(u32, u32)>,
 ) {
@@ -394,7 +394,7 @@ fn cut_and_triangulate_intersections(
                 triangulation
             });
 
-            let triangulations = [triangulation1, triangulation2];
+            let mut triangulations = [triangulation1, triangulation2];
 
             let mut insert_point =
                 |pt: [_; 2], key: (FeatureId, FeatureId), orig_fid: [FeatureId; 2], i: usize| {
@@ -508,10 +508,10 @@ fn convert_fid(mesh: &TriMesh, tri: u32, fid: FeatureId) -> FeatureId {
 fn unified_vertex(
     mesh1: &TriMesh,
     mesh2: &TriMesh,
-    new_vertices12: &[Point<Real>],
-    pos12: &Isometry<Real>,
+    new_vertices12: &[Vector],
+    pos12: Isometry,
     vid: u32,
-) -> Point<Real> {
+) -> Vector {
     let base_id2 = mesh1.vertices().len() as u32;
     let base_id12 = (mesh1.vertices().len() + mesh2.vertices().len()) as u32;
 
@@ -525,16 +525,16 @@ fn unified_vertex(
 }
 
 fn extract_result(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     mesh1: &TriMesh,
     flip1: bool,
     mesh2: &TriMesh,
     flip2: bool,
     spade_handle_to_intersection: &[HashMap<(u32, FixedVertexHandle), (FeatureId, FeatureId)>; 2],
-    intersection_points: &HashMap<(FeatureId, FeatureId), [Point<Real>; 2]>,
+    intersection_points: &HashMap<(FeatureId, FeatureId), [Vector; 2]>,
     triangulations1: &HashMap<u32, Triangulation>,
     triangulations2: &HashMap<u32, Triangulation>,
-    new_vertices12: &mut Vec<Point<Real>>,
+    new_vertices12: &mut Vec<Vector>,
     new_indices12: &mut Vec<[u32; 3]>,
 ) {
     // Base ids for indexing in the first mesh vertices, second mesh vertices, and new vertices, as if they
@@ -574,7 +574,7 @@ fn extract_result(
     for (tri_id, triangulation) in triangulations1.iter() {
         for face in triangulation.delaunay.inner_faces() {
             let vtx = face.vertices();
-            let mut tri = [Point::origin(); 3];
+            let mut tri = [Vector::ZERO; 3];
             let mut idx = [0; 3];
             for k in 0..3 {
                 let fids = spade_handle_to_intersection[0][&(*tri_id, vtx[k].fix())];
@@ -587,11 +587,11 @@ fn extract_result(
 
             let tri = Triangle::from(tri);
             let center = tri.center();
-            let projection = mesh2.project_point(pos12, &tri.center(), false);
+            let projection = mesh2.project_point(pos12, tri.center(), false);
 
             if !tri.is_affinely_dependent_eps(EPS * 10.0)
                 && ((flip2 ^ projection.is_inside)
-                    || (projection.point - center).norm() <= EPS * 10.0)
+                    || (projection.point - center).length() <= EPS * 10.0)
             {
                 if flip1 {
                     idx.swap(1, 2);
@@ -604,7 +604,7 @@ fn extract_result(
     for (tri_id, triangulation) in triangulations2.iter() {
         for face in triangulation.delaunay.inner_faces() {
             let vtx = face.vertices();
-            let mut tri = [Point::origin(); 3];
+            let mut tri = [Vector::ZERO; 3];
             let mut idx = [0; 3];
             for k in 0..3 {
                 let fids = spade_handle_to_intersection[1][&(*tri_id, vtx[k].fix())];
@@ -624,10 +624,10 @@ fn extract_result(
             //       is detected by looking at the distance from the triangle’s center to the other mesh.
             //       If the center lies on the other mesh, then that we have a duplicate face that was already
             //       added in the previous loop.
-            let projection = mesh1.project_local_point(&center, false);
+            let projection = mesh1.project_local_point(center, false);
             if !tri.is_affinely_dependent_eps(EPS * 10.0)
                 && ((flip1 ^ projection.is_inside)
-                    && (projection.point - center).norm() > EPS * 10.0)
+                    && (projection.point - center).length() > EPS * 10.0)
             {
                 if flip2 {
                     idx.swap(1, 2);

@@ -1,17 +1,17 @@
 use crate::bounding_volume::SimdAabb;
-use crate::math::{Point, Real, SimdReal, SIMD_WIDTH};
+use crate::math::{SimdVector, Vector, SIMD_WIDTH};
 use crate::partitioning::{SimdVisitStatus, SimdVisitor};
 use crate::query::point::point_query::PointQuery;
 use crate::shape::TypedSimdCompositeShape;
 use crate::utils::IsometryOpt;
-use simba::simd::{SimdBool as _, SimdValue};
+use simba::simd::SimdBool as _;
 
 /// Visitor for checking if a composite shape contains a specific point.
 pub struct CompositePointContainmentTest<'a, S: 'a> {
     /// The composite shape on which the point containment test should be performed.
     pub shape: &'a S,
     /// The point to be tested.
-    pub point: &'a Point<Real>,
+    pub point: Vector,
     /// A traversal will set this to `true` if the point is inside of `self.shape`.
     pub found: bool,
 }
@@ -19,7 +19,7 @@ pub struct CompositePointContainmentTest<'a, S: 'a> {
 impl<'a, S> CompositePointContainmentTest<'a, S> {
     /// Creates a new visitor for the testing containment of the given `point`
     /// into the given `shape`.
-    pub fn new(shape: &'a S, point: &'a Point<Real>) -> Self {
+    pub fn new(shape: &'a S, point: Vector) -> Self {
         Self {
             shape,
             point,
@@ -37,8 +37,8 @@ impl<'a, S: TypedSimdCompositeShape> SimdVisitor<S::PartId, SimdAabb>
         bv: &SimdAabb,
         b: Option<[Option<&S::PartId>; SIMD_WIDTH]>,
     ) -> SimdVisitStatus {
-        let simd_point: Point<SimdReal> = Point::splat(*self.point);
-        let mask = bv.contains_local_point(&simd_point);
+        let point = SimdVector::splat(self.point);
+        let mask = bv.contains_local_point(point);
 
         if let Some(data) = b {
             let bitmask = mask.bitmask();
@@ -48,7 +48,7 @@ impl<'a, S: TypedSimdCompositeShape> SimdVisitor<S::PartId, SimdAabb>
                     self.shape
                         .map_typed_part_at(*data[ii].unwrap(), |part_pos, obj| {
                             if obj
-                                .contains_local_point(&part_pos.inverse_transform_point(self.point))
+                                .contains_local_point(part_pos.inverse_transform_point(self.point))
                             {
                                 self.found = true;
                             }

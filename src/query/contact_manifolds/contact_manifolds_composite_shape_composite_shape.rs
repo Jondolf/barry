@@ -58,7 +58,7 @@ fn ensure_workspace_exists(workspace: &mut Option<ContactManifoldsWorkspace>) {
 /// Computes the contact manifolds between two composite shapes.
 pub fn contact_manifolds_composite_shape_composite_shape<'a, ManifoldData, ContactData>(
     dispatcher: &dyn PersistentQueryDispatcher<ManifoldData, ContactData>,
-    pos12: &Isometry<Real>,
+    mut pos12: Isometry,
     mut composite1: &'a dyn SimdCompositeShape,
     mut composite2: &'a dyn SimdCompositeShape,
     prediction: Real,
@@ -81,13 +81,13 @@ pub fn contact_manifolds_composite_shape_composite_shape<'a, ManifoldData, Conta
     let mut qbvh1 = composite1.qbvh();
     let mut qbvh2 = composite2.qbvh();
 
-    let mut pos12 = *pos12;
     let mut pos21 = pos12.inverse();
     let mut stack2 = Vec::new();
 
     let mut ls_aabb1 = qbvh1.root_aabb();
     let mut ls_aabb2 = qbvh2.root_aabb();
-    let flipped = ls_aabb1.half_extents().norm_squared() < ls_aabb2.half_extents().norm_squared();
+    let flipped =
+        ls_aabb1.half_extents().length_squared() < ls_aabb2.half_extents().length_squared();
 
     if flipped {
         std::mem::swap(&mut composite1, &mut composite2);
@@ -97,16 +97,16 @@ pub fn contact_manifolds_composite_shape_composite_shape<'a, ManifoldData, Conta
     }
 
     // Traverse qbvh1 first.
-    let ls_aabb2_1 = ls_aabb2.transform_by(&pos12).loosened(prediction);
+    let ls_aabb2_1 = ls_aabb2.transform_by(pos12).loosened(prediction);
     let mut old_manifolds = std::mem::take(manifolds);
 
     let mut leaf_fn1 = |leaf1: &u32| {
         composite1.map_part_at(*leaf1, &mut |part_pos1, part_shape1| {
-            let pos211 = part_pos1.prepend_to(&pos21); // == pos21 * part_pos1
-            let ls_part_aabb1_2 = part_shape1.compute_aabb(&pos211).loosened(prediction);
+            let pos211 = part_pos1.prepend_to(pos21); // == pos21 * part_pos1
+            let ls_part_aabb1_2 = part_shape1.compute_aabb(pos211).loosened(prediction);
             let mut leaf_fn2 = |leaf2: &u32| {
                 composite2.map_part_at(*leaf2, &mut |part_pos2, part_shape2| {
-                    let pos2211 = part_pos2.inv_mul(&pos211);
+                    let pos2211 = part_pos2.inv_mul(pos211);
                     let entry_key = if flipped {
                         (*leaf2, *leaf1)
                     } else {
@@ -133,13 +133,13 @@ pub fn contact_manifolds_composite_shape_composite_shape<'a, ManifoldData, Conta
                             if flipped {
                                 manifold.subshape1 = *leaf2;
                                 manifold.subshape2 = *leaf1;
-                                manifold.subshape_pos1 = part_pos2.copied();
-                                manifold.subshape_pos2 = part_pos1.copied();
+                                manifold.subshape_pos1 = part_pos2;
+                                manifold.subshape_pos2 = part_pos1;
                             } else {
                                 manifold.subshape1 = *leaf1;
                                 manifold.subshape2 = *leaf2;
-                                manifold.subshape_pos1 = part_pos1.copied();
-                                manifold.subshape_pos2 = part_pos2.copied();
+                                manifold.subshape_pos1 = part_pos1;
+                                manifold.subshape_pos2 = part_pos2;
                             };
 
                             manifolds.push(manifold);
@@ -151,7 +151,7 @@ pub fn contact_manifolds_composite_shape_composite_shape<'a, ManifoldData, Conta
 
                     if flipped {
                         let _ = dispatcher.contact_manifold_convex_convex(
-                            &pos2211,
+                            pos2211,
                             part_shape2,
                             part_shape1,
                             prediction,
@@ -159,7 +159,7 @@ pub fn contact_manifolds_composite_shape_composite_shape<'a, ManifoldData, Conta
                         );
                     } else {
                         let _ = dispatcher.contact_manifold_convex_convex(
-                            &pos2211.inverse(),
+                            pos2211.inverse(),
                             part_shape1,
                             part_shape2,
                             prediction,

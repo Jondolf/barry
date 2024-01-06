@@ -1,12 +1,12 @@
 use crate::mass_properties::MassProperties;
-use crate::math::{Point, Real};
+use crate::math::{Real, Vector};
 use crate::shape::Triangle;
 
 impl MassProperties {
     /// Computes the mass properties of a triangle-mesh.
     pub fn from_trimesh(
         density: Real,
-        vertices: &[Point<Real>],
+        vertices: &[Vector],
         indices: &[[u32; 3]],
     ) -> MassProperties {
         let (area, com) = trimesh_area_and_center_of_mass(vertices, indices);
@@ -36,10 +36,10 @@ impl MassProperties {
 
 /// Computes the area and center-of-mass of a triangle-mesh.
 pub fn trimesh_area_and_center_of_mass(
-    vertices: &[Point<Real>],
+    vertices: &[Vector],
     indices: &[[u32; 3]],
-) -> (Real, Point<Real>) {
-    let mut res = Point::origin();
+) -> (Real, Vector) {
+    let mut res = Vector::ZERO;
     let mut areasum = 0.0;
 
     for idx in indices {
@@ -51,7 +51,7 @@ pub fn trimesh_area_and_center_of_mass(
         let area = triangle.area();
         let center = triangle.center();
 
-        res += center.coords * area;
+        res += center * area;
         areasum += area;
     }
 

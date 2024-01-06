@@ -16,8 +16,8 @@ use crate::shape::{Cuboid, SupportMap, Triangle};
 pub fn cuboid_triangle_find_local_separating_edge_twoway(
     cube1: &Cuboid,
     triangle2: &Triangle,
-    pos12: &Isometry<Real>,
-) -> (Real, Vector<Real>) {
+    pos12: Isometry,
+) -> (Real, Vector) {
     // NOTE: everything in this method will be expressed
     // in the local-space of the first triangle. So we
     // don't bother adding 2_1 suffixes (e.g. `a2_1`) to everything in
@@ -47,30 +47,30 @@ pub fn cuboid_triangle_find_local_separating_edge_twoway(
     ];
 
     let tri_dots = [
-        (axes[0].dot(&a.coords), axes[0].dot(&c.coords)),
-        (axes[1].dot(&a.coords), axes[1].dot(&c.coords)),
-        (axes[2].dot(&a.coords), axes[2].dot(&c.coords)),
-        (axes[3].dot(&a.coords), axes[3].dot(&c.coords)),
-        (axes[4].dot(&a.coords), axes[4].dot(&c.coords)),
-        (axes[5].dot(&a.coords), axes[5].dot(&c.coords)),
-        (axes[6].dot(&a.coords), axes[6].dot(&b.coords)),
-        (axes[7].dot(&a.coords), axes[7].dot(&b.coords)),
-        (axes[8].dot(&a.coords), axes[8].dot(&b.coords)),
+        (axes[0].dot(a), axes[0].dot(c)),
+        (axes[1].dot(a), axes[1].dot(c)),
+        (axes[2].dot(a), axes[2].dot(c)),
+        (axes[3].dot(a), axes[3].dot(c)),
+        (axes[4].dot(a), axes[4].dot(c)),
+        (axes[5].dot(a), axes[5].dot(c)),
+        (axes[6].dot(a), axes[6].dot(b)),
+        (axes[7].dot(a), axes[7].dot(b)),
+        (axes[8].dot(a), axes[8].dot(b)),
     ];
 
     let mut best_sep = -Real::MAX;
     let mut best_axis = axes[0];
 
-    for (i, axis) in axes.iter().enumerate() {
-        let axis_norm_squared = axis.norm_squared();
+    for (i, axis) in axes.iter().copied().enumerate() {
+        let axis_length_squared = axis.length_squared();
 
-        if axis_norm_squared > Real::default_epsilon() {
-            let axis_norm = na::ComplexField::sqrt(axis_norm_squared);
+        if axis_length_squared > Real::default_epsilon() {
+            let axis_norm = axis_length_squared.sqrt();
 
             // NOTE: for both axis and -axis, the dot1 will have the same
             // value because of the cuboid's symmetry.
             let local_pt1 = cube1.local_support_point(axis);
-            let dot1 = local_pt1.coords.dot(axis) / axis_norm;
+            let dot1 = local_pt1.dot(axis) / axis_norm;
 
             let (dot2_min, dot2_max) = crate::utils::sort2(tri_dots[i].0, tri_dots[i].1);
 
@@ -79,12 +79,12 @@ pub fn cuboid_triangle_find_local_separating_edge_twoway(
 
             if separation_a > best_sep {
                 best_sep = separation_a;
-                best_axis = *axis / axis_norm;
+                best_axis = axis / axis_norm;
             }
 
             if separation_b > best_sep {
                 best_sep = separation_b;
-                best_axis = -*axis / axis_norm;
+                best_axis = -axis / axis_norm;
             }
         }
     }
@@ -99,14 +99,14 @@ pub fn cuboid_triangle_find_local_separating_edge_twoway(
 pub fn triangle_support_map_find_local_separating_normal_oneway(
     triangle1: &Triangle,
     shape2: &impl SupportMap,
-    pos12: &Isometry<Real>,
-) -> (Real, Vector<Real>) {
+    pos12: Isometry,
+) -> (Real, Vector) {
     let mut best_sep = -Real::MAX;
-    let mut best_normal = Vector::zeros();
+    let mut best_normal = Vector::ZERO;
 
     for edge in &triangle1.edges() {
         if let Some(normal) = edge.normal() {
-            let sep = support_map_support_map_compute_separation(triangle1, shape2, pos12, &normal);
+            let sep = support_map_support_map_compute_separation(triangle1, shape2, pos12, normal);
 
             if sep > best_sep {
                 best_sep = sep;
@@ -125,8 +125,8 @@ pub fn triangle_support_map_find_local_separating_normal_oneway(
 pub fn triangle_cuboid_find_local_separating_normal_oneway(
     triangle1: &Triangle,
     shape2: &Cuboid,
-    pos12: &Isometry<Real>,
-) -> (Real, Vector<Real>) {
+    pos12: Isometry,
+) -> (Real, Vector) {
     triangle_support_map_find_local_separating_normal_oneway(triangle1, shape2, pos12)
 }
 
@@ -138,11 +138,11 @@ pub fn triangle_cuboid_find_local_separating_normal_oneway(
 pub fn triangle_cuboid_find_local_separating_normal_oneway(
     triangle1: &Triangle,
     shape2: &Cuboid,
-    pos12: &Isometry<Real>,
-) -> (Real, Vector<Real>) {
+    pos12: Isometry,
+) -> (Real, Vector) {
     sat::point_cuboid_find_local_separating_normal_oneway(
         triangle1.a,
-        triangle1.normal(),
+        triangle1.normal().ok(),
         shape2,
         pos12,
     )

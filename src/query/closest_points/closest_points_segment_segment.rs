@@ -1,13 +1,11 @@
-use crate::math::{Isometry, Real};
+use crate::math::{AnyReal, AnyVector, Isometry, Real};
 use crate::query::ClosestPoints;
 use crate::shape::{Segment, SegmentPointLocation};
-
-use na::{self, Point};
 
 /// Closest points between segments.
 #[inline]
 pub fn closest_points_segment_segment(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     seg1: &Segment,
     seg2: &Segment,
     margin: Real,
@@ -16,7 +14,7 @@ pub fn closest_points_segment_segment(
     let p1 = seg1.point_at(&loc1);
     let p2 = seg2.point_at(&loc2);
 
-    if na::distance_squared(&p1, &(pos12 * p2)) <= margin * margin {
+    if p1.distance_squared(pos12 * p2) <= margin * margin {
         ClosestPoints::WithinMargin(p1, p2)
     } else {
         ClosestPoints::Disjoint
@@ -27,87 +25,87 @@ pub fn closest_points_segment_segment(
 /// Closest points between two segments.
 #[inline]
 pub fn closest_points_segment_segment_with_locations(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     seg1: &Segment,
     seg2: &Segment,
 ) -> (SegmentPointLocation, SegmentPointLocation) {
     let seg2_1 = seg2.transformed(pos12);
-    closest_points_segment_segment_with_locations_nD((&seg1.a, &seg1.b), (&seg2_1.a, &seg2_1.b))
+    closest_points_segment_segment_with_locations_nD((seg1.a, seg1.b), (seg2_1.a, seg2_1.b))
 }
 
 /// Segment-segment closest points computation in an arbitrary dimension.
 #[allow(non_snake_case)]
 #[inline]
-pub fn closest_points_segment_segment_with_locations_nD<const D: usize>(
-    seg1: (&Point<Real, D>, &Point<Real, D>),
-    seg2: (&Point<Real, D>, &Point<Real, D>),
+pub fn closest_points_segment_segment_with_locations_nD<V: AnyVector>(
+    seg1: (V, V),
+    seg2: (V, V),
 ) -> (SegmentPointLocation, SegmentPointLocation) {
+    let zero = V::Real::ZERO;
+    let one = V::Real::ONE;
+
     // Inspired by RealField-time collision detection by Christer Ericson.
     let d1 = seg1.1 - seg1.0;
     let d2 = seg2.1 - seg2.0;
     let r = seg1.0 - seg2.0;
 
-    let a = d1.norm_squared();
-    let e = d2.norm_squared();
-    let f = d2.dot(&r);
-
-    let _0: Real = 0.0;
-    let _1: Real = 1.0;
+    let a = d1.length_squared();
+    let e = d2.length_squared();
+    let f = d2.dot(r);
 
     let mut s;
     let mut t;
 
-    let _eps = crate::math::DEFAULT_EPSILON;
+    let _eps = V::Real::from_real(crate::math::DEFAULT_EPSILON);
     if a <= _eps && e <= _eps {
-        s = _0;
-        t = _0;
+        s = zero;
+        t = zero;
     } else if a <= _eps {
-        s = _0;
-        t = na::clamp(f / e, _0, _1);
+        s = zero;
+        t = (f / e).clamp(zero, one);
     } else {
-        let c = d1.dot(&r);
+        let c = d1.dot(r);
         if e <= _eps {
-            t = _0;
-            s = na::clamp(-c / a, _0, _1);
+            t = zero;
+            s = (-c / a).clamp(zero, one);
         } else {
-            let b = d1.dot(&d2);
+            let b = d1.dot(d2);
             let ae = a * e;
             let bb = b * b;
             let denom = ae - bb;
 
             // Use absolute and ulps error to test collinearity.
-            if denom > _eps && !ulps_eq!(ae, bb) {
-                s = na::clamp((b * f - c * e) / denom, _0, _1);
+            if denom > _eps && !ulps_eq!(ae.to_real(), bb.to_real()) {
+                s = ((b * f - c * e) / denom).clamp(zero, one);
             } else {
-                s = _0;
+                s = zero;
             }
 
             t = (b * s + f) / e;
 
-            if t < _0 {
-                t = _0;
-                s = na::clamp(-c / a, _0, _1);
-            } else if t > _1 {
-                t = _1;
-                s = na::clamp((b - c) / a, _0, _1);
+            if t < zero {
+                t = zero;
+                s = (-c / a).clamp(zero, one);
+            } else if t > one {
+                t = one;
+                s = ((b - c) / a).clamp(zero, one);
             }
         }
     }
 
-    let loc1 = if s == _0 {
+    let loc1 = if s == zero {
         SegmentPointLocation::OnVertex(0)
-    } else if s == _1 {
+    } else if s == one {
         SegmentPointLocation::OnVertex(1)
     } else {
-        SegmentPointLocation::OnEdge([_1 - s, s])
+        SegmentPointLocation::OnEdge([(one - s).to_real(), s.to_real()])
     };
 
-    let loc2 = if t == _0 {
+    let loc2 = if t == zero {
         SegmentPointLocation::OnVertex(0)
-    } else if t == _1 {
+    } else if t == one {
         SegmentPointLocation::OnVertex(1)
     } else {
-        SegmentPointLocation::OnEdge([_1 - t, t])
+        SegmentPointLocation::OnEdge([(one - t).to_real(), t.to_real()])
     };
 
     (loc1, loc2)

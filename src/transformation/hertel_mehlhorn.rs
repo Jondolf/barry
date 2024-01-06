@@ -1,7 +1,7 @@
 //! Hertel-Mehlhorn algorithm for convex partitioning.
 //! Based on <https://github.com/ivanfratric/polypartition>, contributed by embotech AG.
 
-use crate::math::{Point, Real};
+use crate::math::Vector;
 use crate::utils::point_in_triangle::{corner_direction, Orientation};
 
 /// Checks if the counter-clockwise polygon `poly` has an edge going counter-clockwise from `p1` to `p2`.
@@ -27,7 +27,7 @@ fn find_edge_index_in_polygon(p1: u32, p2: u32, indices: &[u32]) -> Option<(usiz
 /// partitioning.
 ///
 /// This algorithm is described in <https://people.mpi-inf.mpg.de/~mehlhorn/ftp/FastTriangulation.pdf>.
-pub fn hertel_mehlhorn(vertices: &[Point<Real>], indices: &[[u32; 3]]) -> Vec<Vec<Point<Real>>> {
+pub fn hertel_mehlhorn(vertices: &[Vector], indices: &[[u32; 3]]) -> Vec<Vec<Vector>> {
     hertel_mehlhorn_idx(vertices, indices)
         .into_iter()
         .map(|poly_indices| {
@@ -40,7 +40,7 @@ pub fn hertel_mehlhorn(vertices: &[Point<Real>], indices: &[[u32; 3]]) -> Vec<Ve
 }
 
 /// Internal implementation of the Hertel-Mehlhorn algorithm that returns the polygon indices.
-pub fn hertel_mehlhorn_idx(vertices: &[Point<Real>], indices: &[[u32; 3]]) -> Vec<Vec<u32>> {
+pub fn hertel_mehlhorn_idx(vertices: &[Vector], indices: &[[u32; 3]]) -> Vec<Vec<u32>> {
     let mut indices: Vec<Vec<u32>> = indices.iter().map(|indices| indices.to_vec()).collect();
     // Iterate over all polygons.
     let mut i_poly1 = 0;
@@ -83,9 +83,9 @@ pub fn hertel_mehlhorn_idx(vertices: &[Point<Real>], indices: &[[u32; 3]]) -> Ve
             // First connection:
             let i13 = (polygon1.len() + i11 - 1) % polygon1.len();
             let i23 = (i22 + 1) % polygon2.len();
-            let p1 = &vertices[polygon2[i23] as usize];
-            let p2 = &vertices[polygon1[i13] as usize];
-            let p3 = &vertices[polygon1[i11] as usize];
+            let p1 = vertices[polygon2[i23] as usize];
+            let p2 = vertices[polygon1[i13] as usize];
+            let p3 = vertices[polygon1[i11] as usize];
             // Go to the next point if this section isn't convex.
             if corner_direction(p1, p2, p3) == Orientation::Cw {
                 i11 += 1;
@@ -94,9 +94,9 @@ pub fn hertel_mehlhorn_idx(vertices: &[Point<Real>], indices: &[[u32; 3]]) -> Ve
             // Second connection:
             let i13 = (i12 + 1) % polygon1.len();
             let i23 = (polygon2.len() + i21 - 1) % polygon2.len();
-            let p1 = &vertices[polygon1[i13] as usize];
-            let p2 = &vertices[polygon2[i23] as usize];
-            let p3 = &vertices[polygon1[i12] as usize];
+            let p1 = vertices[polygon1[i13] as usize];
+            let p2 = vertices[polygon2[i23] as usize];
+            let p3 = vertices[polygon1[i12] as usize];
             // Go to the next point if this section isn't convex.
             if corner_direction(p1, p2, p3) == Orientation::Cw {
                 i11 += 1;
@@ -126,8 +126,9 @@ pub fn hertel_mehlhorn_idx(vertices: &[Point<Real>], indices: &[[u32; 3]]) -> Ve
 // --- Unit tests ----------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
+    use crate::math::Vector;
+
     use super::hertel_mehlhorn_idx;
-    use crate::math::Point;
 
     #[test]
     fn origin_outside_shape() {
@@ -140,14 +141,14 @@ mod tests {
         // |       |   °   |       |
         // 5-------6       1-------2
         let vertices = vec![
-            Point::new(2.0, 2.0),   // 0
-            Point::new(2.0, -2.0),  // 1
-            Point::new(4.0, -2.0),  // 2
-            Point::new(4.0, 4.0),   // 3
-            Point::new(-4.0, 4.0),  // 4
-            Point::new(-4.0, -2.0), // 5
-            Point::new(-2.0, -2.0), // 6
-            Point::new(-2.0, 2.0),  // 7
+            Vector::new(2.0, 2.0),   // 0
+            Vector::new(2.0, -2.0),  // 1
+            Vector::new(4.0, -2.0),  // 2
+            Vector::new(4.0, 4.0),   // 3
+            Vector::new(-4.0, 4.0),  // 4
+            Vector::new(-4.0, -2.0), // 5
+            Vector::new(-2.0, -2.0), // 6
+            Vector::new(-2.0, 2.0),  // 7
         ];
 
         let triangles = [

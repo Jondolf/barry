@@ -1,12 +1,9 @@
 //! The Gilbert–Johnson–Keerthi distance algorithm.
 
-use na::{self, ComplexField, Unit};
-
+use crate::math::{Isometry, Real, UnitVector, Vector, DIM};
 use crate::query::gjk::{CSOPoint, ConstantOrigin, VoronoiSimplex};
-use crate::shape::SupportMap;
-// use query::Proximity;
-use crate::math::{Isometry, Point, Real, Vector, DIM};
 use crate::query::{self, Ray};
+use crate::shape::SupportMap;
 
 use num::{Bounded, Zero};
 
@@ -19,24 +16,21 @@ pub enum GJKResult {
     ///
     /// Both points and vector are expressed in the local-space of the first geometry involved
     /// in the GJK execution.
-    ClosestPoints(Point<Real>, Point<Real>, Unit<Vector<Real>>),
+    ClosestPoints(Vector, Vector, UnitVector),
     /// Result of the GJK algorithm when the origin is too close to the polytope but not inside of it.
     ///
     /// The returned vector is expressed in the local-space of the first geometry involved in the
     /// GJK execution.
-    Proximity(Unit<Vector<Real>>),
+    Proximity(UnitVector),
     /// Result of the GJK algorithm when the origin is too far away from the polytope.
     ///
     /// The returned vector is expressed in the local-space of the first geomety involved in the
     /// GJK execution.
-    NoIntersection(Unit<Vector<Real>>),
+    NoIntersection(UnitVector),
 }
 
 /// The absolute tolerence used by the GJK algorithm.
-pub fn eps_tol() -> Real {
-    let _eps = crate::math::DEFAULT_EPSILON;
-    _eps * 10.0
-}
+pub const EPS_TOLERANCE: Real = 10.0 * crate::math::DEFAULT_EPSILON;
 
 /// Projects the origin on the boundary of the given shape.
 ///
@@ -46,16 +40,12 @@ pub fn eps_tol() -> Real {
 /// the EPA algorithm failed to compute the projection.
 ///
 /// Return the projected point in the local-space of `g`.
-pub fn project_origin<G: ?Sized>(
-    m: &Isometry<Real>,
-    g: &G,
-    simplex: &mut VoronoiSimplex,
-) -> Option<Point<Real>>
+pub fn project_origin<G: ?Sized>(m: Isometry, g: &G, simplex: &mut VoronoiSimplex) -> Option<Vector>
 where
     G: SupportMap,
 {
     match closest_points(
-        &m.inverse(),
+        m.inverse(),
         g,
         &ConstantOrigin,
         Real::max_value(),
@@ -84,7 +74,7 @@ where
 /// compute the exact distance and return `GJKResult::Projection(point)` if the origin is closer
 /// than `max_dist` but not inside `shape`.
 pub fn closest_points<G1: ?Sized, G2: ?Sized>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     g1: &G1,
     g2: &G2,
     max_dist: Real,
@@ -96,15 +86,15 @@ where
     G2: SupportMap,
 {
     let _eps = crate::math::DEFAULT_EPSILON;
-    let _eps_tol: Real = eps_tol();
-    let _eps_rel: Real = ComplexField::sqrt(_eps_tol);
+    let _eps_tol: Real = EPS_TOLERANCE;
+    let _eps_rel: Real = _eps_tol.sqrt();
 
     // FIXME: reset the simplex if it is empty?
     let mut proj = simplex.project_origin_and_reduce();
 
     let mut old_dir;
 
-    if let Some(proj_dir) = Unit::try_new(proj.coords, 0.0) {
+    if let Ok(proj_dir) = UnitVector::new(proj) {
         old_dir = -proj_dir;
     } else {
         return GJKResult::Intersection;
@@ -117,7 +107,7 @@ where
     loop {
         let old_max_bound = max_bound;
 
-        if let Some((new_dir, dist)) = Unit::try_new_and_get(-proj.coords, _eps_tol) {
+        if let Ok((new_dir, dist)) = UnitVector::new_and_length(-proj) {
             dir = new_dir;
             max_bound = dist;
         } else {
@@ -134,8 +124,8 @@ where
             }
         }
 
-        let cso_point = CSOPoint::from_shapes(pos12, g1, g2, &dir);
-        let min_bound = -dir.dot(&cso_point.point.coords);
+        let cso_point = CSOPoint::from_shapes(pos12, g1, g2, dir);
+        let min_bound = -dir.dot(cso_point.point);
 
         assert!(min_bound.is_finite());
 
@@ -179,7 +169,7 @@ where
         }
         niter += 1;
         if niter == 10000 {
-            return GJKResult::NoIntersection(Vector::x_axis());
+            return GJKResult::NoIntersection(UnitVector::X);
         }
     }
 }
@@ -190,12 +180,12 @@ pub fn cast_local_ray<G: ?Sized>(
     simplex: &mut VoronoiSimplex,
     ray: &Ray,
     max_toi: Real,
-) -> Option<(Real, Vector<Real>)>
+) -> Option<(Real, Vector)>
 where
     G: SupportMap,
 {
     let g2 = ConstantOrigin;
-    minkowski_ray_cast(&Isometry::identity(), shape, &g2, ray, max_toi, simplex)
+    minkowski_ray_cast(Isometry::IDENTITY, shape, &g2, ray, max_toi, simplex)
 }
 
 /// Compute the normal and the distance that can travel `g1` along the direction
@@ -203,24 +193,24 @@ where
 ///
 /// The `dir` vector must be expressed in the local-space of the first shape.
 pub fn directional_distance<G1: ?Sized, G2: ?Sized>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     g1: &G1,
     g2: &G2,
-    dir: &Vector<Real>,
+    dir: Vector,
     simplex: &mut VoronoiSimplex,
-) -> Option<(Real, Vector<Real>, Point<Real>, Point<Real>)>
+) -> Option<(Real, Vector, Vector, Vector)>
 where
     G1: SupportMap,
     G2: SupportMap,
 {
-    let ray = Ray::new(Point::origin(), *dir);
+    let ray = Ray::new(Vector::ZERO, dir);
     minkowski_ray_cast(pos12, g1, g2, &ray, Real::max_value(), simplex).map(|(toi, normal)| {
         let witnesses = if !toi.is_zero() {
             result(simplex, simplex.dimension() == DIM)
         } else {
             // If there is penetration, the witness points
             // are undefined.
-            (Point::origin(), Point::origin())
+            (Vector::ZERO, Vector::ZERO)
         };
 
         (toi, normal, witnesses.0, witnesses.1)
@@ -229,22 +219,22 @@ where
 
 // Ray-cast on the Minkowski Difference `g1 - pos12 * g2`.
 fn minkowski_ray_cast<G1: ?Sized, G2: ?Sized>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     g1: &G1,
     g2: &G2,
     ray: &Ray,
     max_toi: Real,
     simplex: &mut VoronoiSimplex,
-) -> Option<(Real, Vector<Real>)>
+) -> Option<(Real, Vector)>
 where
     G1: SupportMap,
     G2: SupportMap,
 {
     let _eps = crate::math::DEFAULT_EPSILON;
-    let _eps_tol: Real = eps_tol();
-    let _eps_rel: Real = ComplexField::sqrt(_eps_tol);
+    let _eps_tol: Real = EPS_TOLERANCE;
+    let _eps_rel: Real = _eps_tol.sqrt();
 
-    let ray_length = ray.dir.norm();
+    let ray_length = ray.dir.length();
 
     if relative_eq!(ray_length, 0.0) {
         return None;
@@ -256,12 +246,12 @@ where
     let mut ldir = dir;
 
     // Initialize the simplex.
-    let support_point = CSOPoint::from_shapes(pos12, g1, g2, &dir);
-    simplex.reset(support_point.translate(&-curr_ray.origin.coords));
+    let support_point = CSOPoint::from_shapes(pos12, g1, g2, UnitVector::from_normalized(dir));
+    simplex.reset(support_point.translate(-curr_ray.origin));
 
     // FIXME: reset the simplex if it is empty?
     let mut proj = simplex.project_origin_and_reduce();
-    let mut max_bound = Real::max_value();
+    let mut max_bound = Real::MAX;
     let mut dir;
     let mut niter = 0;
     let mut last_chance = false;
@@ -269,7 +259,7 @@ where
     loop {
         let old_max_bound = max_bound;
 
-        if let Some((new_dir, dist)) = Unit::try_new_and_get(-proj.coords, _eps_tol) {
+        if let Ok((new_dir, dist)) = UnitVector::new_and_length(-proj) {
             dir = new_dir;
             max_bound = dist;
         } else {
@@ -279,13 +269,13 @@ where
         let support_point = if max_bound >= old_max_bound {
             // Upper bounds inconsistencies. Consider the projection as a valid support point.
             last_chance = true;
-            CSOPoint::single_point(proj + curr_ray.origin.coords)
+            CSOPoint::single_point(proj + curr_ray.origin)
         } else {
-            CSOPoint::from_shapes(pos12, g1, g2, &dir)
+            CSOPoint::from_shapes(pos12, g1, g2, dir)
         };
 
         if last_chance && ltoi > 0.0 {
-            // last_chance && ltoi > 0.0 && (support_point.point - curr_ray.origin).dot(&ldir) >= 0.0 {
+            // last_chance && ltoi > 0.0 && (support_point.point - curr_ray.origin).dot(ldir) >= 0.0 {
             return Some((ltoi / ray_length, ldir));
         }
 
@@ -297,9 +287,9 @@ where
         //          < 0             |  > 0  | New lower bound, move the origin.
         //          > 0             |  < 0  | Miss. No intersection.
         //          > 0             |  > 0  | New higher bound.
-        match query::details::ray_toi_with_halfspace(&support_point.point, &dir, &curr_ray) {
+        match query::details::ray_toi_with_halfspace(support_point.point, dir, &curr_ray) {
             Some(t) => {
-                if dir.dot(&curr_ray.dir) < 0.0 && t > 0.0 {
+                if dir.dot(curr_ray.dir) < 0.0 && t > 0.0 {
                     // new lower bound
                     ldir = *dir;
                     ltoi += t;
@@ -314,12 +304,12 @@ where
                     let shift = curr_ray.dir * t;
                     curr_ray.origin += shift;
                     max_bound = Real::max_value();
-                    simplex.modify_pnts(&|pt| pt.translate_mut(&-shift));
+                    simplex.modify_pnts(&|pt| pt.translate_mut(-shift));
                     last_chance = false;
                 }
             }
             None => {
-                if dir.dot(&curr_ray.dir) > _eps_tol {
+                if dir.dot(curr_ray.dir) > _eps_tol {
                     // miss
                     return None;
                 }
@@ -330,7 +320,7 @@ where
             return None;
         }
 
-        let min_bound = -dir.dot(&(support_point.point.coords - curr_ray.origin.coords));
+        let min_bound = -dir.dot(support_point.point - curr_ray.origin);
 
         assert!(min_bound.is_finite());
 
@@ -339,7 +329,7 @@ where
             // some castes.
             // FIXME: I feel like we should always return `Some` in
             // this case, even with floating-point numbers. Though it
-            // has not been sufficinetly tested with floats yet to be sure.
+            // has not been sufficiently tested with floats yet to be sure.
             if cfg!(feature = "improved_fixed_point_support") {
                 return Some((ltoi / ray_length, ldir));
             } else {
@@ -347,7 +337,7 @@ where
             }
         }
 
-        let _ = simplex.add_point(support_point.translate(&-curr_ray.origin.coords));
+        let _ = simplex.add_point(support_point.translate(-curr_ray.origin));
         proj = simplex.project_origin_and_reduce();
 
         if simplex.dimension() == DIM {
@@ -365,14 +355,14 @@ where
     }
 }
 
-fn result(simplex: &VoronoiSimplex, prev: bool) -> (Point<Real>, Point<Real>) {
-    let mut res = (Point::origin(), Point::origin());
+fn result(simplex: &VoronoiSimplex, prev: bool) -> (Vector, Vector) {
+    let mut res = (Vector::ZERO, Vector::ZERO);
     if prev {
         for i in 0..simplex.prev_dimension() + 1 {
             let coord = simplex.prev_proj_coord(i);
             let point = simplex.prev_point(i);
-            res.0 += point.orig1.coords * coord;
-            res.1 += point.orig2.coords * coord;
+            res.0 += point.orig1 * coord;
+            res.1 += point.orig2 * coord;
         }
 
         res
@@ -380,8 +370,8 @@ fn result(simplex: &VoronoiSimplex, prev: bool) -> (Point<Real>, Point<Real>) {
         for i in 0..simplex.dimension() + 1 {
             let coord = simplex.proj_coord(i);
             let point = simplex.point(i);
-            res.0 += point.orig1.coords * coord;
-            res.1 += point.orig2.coords * coord;
+            res.0 += point.orig1 * coord;
+            res.1 += point.orig2 * coord;
         }
 
         res

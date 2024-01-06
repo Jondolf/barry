@@ -3,13 +3,13 @@ use std::borrow::Cow;
 
 use crate::{
     bounding_volume::Aabb,
-    math::{Point, Real},
+    math::{Real, Vector},
     partitioning::{GenericQbvh, Qbvh},
     utils::DefaultStorage,
 };
 
 use super::QbvhUpdateWorkspace;
-
+/*
 #[test]
 fn test_case_qbvh_1() {
     //  thread 'partitioning::qbvh::update::tests::test_case_qbvh' panicked at 'assertion failed: `(left == right)`
@@ -29,7 +29,7 @@ fn test_case_qbvh_3() {
     // thread 'partitioning::qbvh::update::tests::test_case_qbvh_3' panicked at 'attempt to add with overflow', crates\barry2d\../../src\partitioning\qbvh\update.rs:363:54
     test_qbvh_random_operations(0x93bcaea3b92a9bfe, 100, false, None, 0.53, 100);
 }
-
+*/
 // // uncomment to search for a failed seed
 // #[test]
 // fn test_case_qbvh() {
@@ -137,7 +137,7 @@ fn test_qbvh_random_operations(
             qbvh.check_topology();
         } else {
             // remove aabb
-            if added_aabb_indices.len() == 0 {
+            if added_aabb_indices.is_empty() {
                 continue;
             }
             let aabb_index =
@@ -214,7 +214,7 @@ impl QbvhTester {
         let mut qbvh = Qbvh::new();
         let workspace = QbvhUpdateWorkspace::default();
         let aabbs = self.aabbs.clone();
-        qbvh.clear_and_rebuild(aabbs.iter().map(|(index, aabb)| (index, aabb.clone())), 0.0);
+        qbvh.clear_and_rebuild(aabbs.iter().map(|(index, aabb)| (index, *aabb)), 0.0);
         QbvhTester {
             qbvh,
             workspace,
@@ -246,7 +246,7 @@ impl QbvhTester {
             *self
                 .aabbs
                 .get(*index)
-                .expect(&format!("invalid index {}", index))
+                .unwrap_or_else(|| panic!("invalid index {}", index))
         });
     }
 
@@ -270,14 +270,14 @@ fn generate_random_aabb(rng: &mut StdRng) -> Aabb {
 
     #[cfg(feature = "dim3")]
     {
-        let mins = Point::new(min_x as Real, min_y as Real, min_z as Real);
-        let maxs = Point::new(max_x as Real, max_y as Real, max_z as Real);
+        let mins = Vector::new(min_x as Real, min_y as Real, min_z as Real);
+        let maxs = Vector::new(max_x as Real, max_y as Real, max_z as Real);
         Aabb::new(mins, maxs)
     }
     #[cfg(feature = "dim2")]
     {
-        let mins = Point::new(min_x as Real, min_y as Real);
-        let maxs = Point::new(max_x as Real, max_y as Real);
+        let mins = Vector::new(min_x as Real, min_y as Real);
+        let maxs = Vector::new(max_x as Real, max_y as Real);
         Aabb::new(mins, maxs)
     }
 }

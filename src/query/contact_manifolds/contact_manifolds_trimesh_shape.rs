@@ -1,5 +1,5 @@
 use crate::bounding_volume::{Aabb, BoundingVolume};
-use crate::math::{Isometry, Real};
+use crate::math::{Isometry, Real, Vector};
 use crate::query::contact_manifolds::contact_manifolds_workspace::{
     TypedWorkspaceData, WorkspaceData,
 };
@@ -36,7 +36,7 @@ impl TriMeshShapeContactManifoldsWorkspace {
 /// Computes the contact manifold between a triangle-mesh an a shape, both represented as `Shape` trait-objects.
 pub fn contact_manifolds_trimesh_shape_shapes<ManifoldData, ContactData>(
     dispatcher: &dyn PersistentQueryDispatcher<ManifoldData, ContactData>,
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     shape1: &dyn Shape,
     shape2: &dyn Shape,
     prediction: Real,
@@ -53,7 +53,7 @@ pub fn contact_manifolds_trimesh_shape_shapes<ManifoldData, ContactData>(
     } else if let Some(trimesh2) = shape2.as_trimesh() {
         contact_manifolds_trimesh_shape(
             dispatcher,
-            &pos12.inverse(),
+            pos12.inverse(),
             trimesh2,
             shape1,
             prediction,
@@ -81,7 +81,7 @@ fn ensure_workspace_exists(workspace: &mut Option<ContactManifoldsWorkspace>) {
 /// Computes the contact manifold between a triangle-mesh and a shape.
 pub fn contact_manifolds_trimesh_shape<ManifoldData, ContactData>(
     dispatcher: &dyn PersistentQueryDispatcher<ManifoldData, ContactData>,
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     trimesh1: &TriMesh,
     shape2: &dyn Shape,
     prediction: Real,
@@ -106,7 +106,7 @@ pub fn contact_manifolds_trimesh_shape<ManifoldData, ContactData>(
 
     if !same_local_aabb2 {
         let extra_margin =
-            (new_local_aabb2.maxs - new_local_aabb2.mins).map(|e| (e / 10.0).min(0.1));
+            ((new_local_aabb2.maxs - new_local_aabb2.mins) / 10.0).min(Vector::splat(0.1));
         new_local_aabb2.mins -= extra_margin;
         new_local_aabb2.maxs += extra_margin;
 
@@ -184,7 +184,7 @@ pub fn contact_manifolds_trimesh_shape<ManifoldData, ContactData>(
 
         if flipped {
             let _ = dispatcher.contact_manifold_convex_convex(
-                &pos12.inverse(),
+                pos12.inverse(),
                 shape2,
                 &triangle1,
                 prediction,

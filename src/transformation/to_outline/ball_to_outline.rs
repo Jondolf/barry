@@ -1,23 +1,18 @@
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{self, Isometry, Real, Rotation, Vector, Vector3};
 use crate::shape::Ball;
 use crate::transformation::utils;
-use na::{self, Point3, RealField};
-
-#[cfg(not(feature = "std"))]
-use na::ComplexField;
 
 impl Ball {
     /// Outlines this ball’s shape using polylines.
-    pub fn to_outline(&self, nsubdiv: u32) -> (Vec<Point3<Real>>, Vec<[u32; 2]>) {
+    pub fn to_outline(&self, nsubdiv: u32) -> (Vec<Vector3>, Vec<[u32; 2]>) {
         let diameter = self.radius * 2.0;
         let (vtx, idx) = unit_sphere_outline(nsubdiv);
-        (utils::scaled(vtx, Vector::repeat(diameter)), idx)
+        (utils::scaled(vtx, Vector::splat(diameter)), idx)
     }
 }
 
-fn unit_sphere_outline(nsubdiv: u32) -> (Vec<Point3<Real>>, Vec<[u32; 2]>) {
-    let two_pi = Real::two_pi();
-    let dtheta = two_pi / (nsubdiv as Real);
+fn unit_sphere_outline(nsubdiv: u32) -> (Vec<Vector3>, Vec<[u32; 2]>) {
+    let dtheta = math::real_consts::TAU / (nsubdiv as Real);
     let mut coords = Vec::new();
     let mut indices = Vec::new();
 
@@ -28,11 +23,15 @@ fn unit_sphere_outline(nsubdiv: u32) -> (Vec<Point3<Real>>, Vec<[u32; 2]>) {
     let n = nsubdiv as usize;
     utils::transform(
         &mut coords[n..n * 2],
-        Isometry::rotation(Vector::x() * Real::frac_pi_2()),
+        Isometry::from_rotation(Rotation::from_scaled_axis(
+            Vector::X * math::real_consts::FRAC_PI_2,
+        )),
     );
     utils::transform(
         &mut coords[n * 2..n * 3],
-        Isometry::rotation(Vector::z() * Real::frac_pi_2()),
+        Isometry::from_rotation(Rotation::from_scaled_axis(
+            Vector::Z * math::real_consts::FRAC_PI_2,
+        )),
     );
 
     utils::push_circle_outline_indices(&mut indices, 0..nsubdiv);
@@ -45,11 +44,11 @@ fn unit_sphere_outline(nsubdiv: u32) -> (Vec<Point3<Real>>, Vec<[u32; 2]>) {
 /// Creates an hemisphere with a radius of 0.5.
 pub(crate) fn push_unit_hemisphere_outline(
     nsubdiv: u32,
-    pts: &mut Vec<Point<Real>>,
+    pts: &mut Vec<Vector>,
     idx: &mut Vec<[u32; 2]>,
 ) {
     let base_idx = pts.len() as u32;
-    let dtheta = Real::pi() / (nsubdiv as Real);
+    let dtheta = math::real_consts::PI / (nsubdiv as Real);
     let npoints = nsubdiv + 1;
 
     utils::push_circle(0.5, npoints, dtheta, 0.0, pts);
@@ -58,12 +57,17 @@ pub(crate) fn push_unit_hemisphere_outline(
     let n = npoints as usize;
     utils::transform(
         &mut pts[base_idx as usize..base_idx as usize + n],
-        Isometry::rotation(Vector::x() * -Real::frac_pi_2()),
+        Isometry::from_rotation(Rotation::from_scaled_axis(
+            Vector::X * -math::real_consts::FRAC_PI_2,
+        )),
     );
     utils::transform(
         &mut pts[base_idx as usize + n..base_idx as usize + n * 2],
-        Isometry::rotation(Vector::z() * Real::frac_pi_2())
-            * Isometry::rotation(Vector::y() * Real::frac_pi_2()),
+        Isometry::from_rotation(Rotation::from_scaled_axis(
+            Vector::Z * math::real_consts::FRAC_PI_2,
+        )) * Isometry::from_rotation(Rotation::from_scaled_axis(
+            Vector::Y * math::real_consts::FRAC_PI_2,
+        )),
     );
 
     utils::push_open_circle_outline_indices(idx, base_idx..base_idx + npoints);

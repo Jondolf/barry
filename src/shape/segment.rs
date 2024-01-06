@@ -1,9 +1,10 @@
 //! Definition of the segment shape.
 
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{Isometry, Real, UnitVector, Vector};
 use crate::shape::{FeatureId, SupportMap};
+#[cfg(feature = "dim3")]
+use crate::MinMaxIndex;
 
-use na::{self, Unit};
 use std::mem;
 
 #[cfg(feature = "rkyv")]
@@ -22,9 +23,9 @@ use rkyv::{bytecheck, CheckBytes};
 #[repr(C)]
 pub struct Segment {
     /// The segment first point.
-    pub a: Point<Real>,
+    pub a: Vector,
     /// The segment second point.
-    pub b: Point<Real>,
+    pub b: Vector,
 }
 
 /// Logical description of the location of a point on a triangle.
@@ -56,33 +57,30 @@ impl SegmentPointLocation {
 impl Segment {
     /// Creates a new segment from two points.
     #[inline]
-    pub fn new(a: Point<Real>, b: Point<Real>) -> Segment {
+    pub fn new(a: Vector, b: Vector) -> Segment {
         Segment { a, b }
     }
 
     /// Creates the reference to a segment from the reference to an array of two points.
-    pub fn from_array(arr: &[Point<Real>; 2]) -> &Segment {
+    pub fn from_array(arr: &[Vector; 2]) -> &Segment {
         unsafe { mem::transmute(arr) }
     }
 
     /// Computes a scaled version of this segment.
-    pub fn scaled(self, scale: &Vector<Real>) -> Self {
-        Self::new(
-            na::Scale::from(*scale) * self.a,
-            na::Scale::from(*scale) * self.b,
-        )
+    pub fn scaled(self, scale: Vector) -> Self {
+        Self::new(scale * self.a, scale * self.b)
     }
 
     /// The direction of this segment scaled by its length.
     ///
     /// Points from `self.a` toward `self.b`.
-    pub fn scaled_direction(&self) -> Vector<Real> {
+    pub fn scaled_direction(&self) -> Vector {
         self.b - self.a
     }
 
     /// The length of this segment.
     pub fn length(&self) -> Real {
-        self.scaled_direction().norm()
+        self.scaled_direction().length()
     }
 
     /// Swaps the two vertices of this segment.
@@ -94,13 +92,13 @@ impl Segment {
     ///
     /// Points from `self.a()` toward `self.b()`.
     /// Returns `None` is both points are equal.
-    pub fn direction(&self) -> Option<Unit<Vector<Real>>> {
-        Unit::try_new(self.scaled_direction(), crate::math::DEFAULT_EPSILON)
+    pub fn direction(&self) -> Option<UnitVector> {
+        UnitVector::new(self.scaled_direction()).ok()
     }
 
     /// In 2D, the not-normalized counterclockwise normal of this segment.
     #[cfg(feature = "dim2")]
-    pub fn scaled_normal(&self) -> Vector<Real> {
+    pub fn scaled_normal(&self) -> Vector {
         let dir = self.scaled_direction();
         Vector::new(dir.y, -dir.x)
     }
@@ -108,7 +106,7 @@ impl Segment {
     /// The not-normalized counterclockwise normal of this segment, assuming it lies on the plane
     /// with the normal collinear to the given axis (0 = X, 1 = Y, 2 = Z).
     #[cfg(feature = "dim3")]
-    pub fn scaled_planar_normal(&self, plane_axis: u8) -> Vector<Real> {
+    pub fn scaled_planar_normal(&self, plane_axis: u8) -> Vector {
         let dir = self.scaled_direction();
         match plane_axis {
             0 => Vector::new(0.0, dir.z, -dir.y),
@@ -120,45 +118,40 @@ impl Segment {
 
     /// In 2D, the normalized counterclockwise normal of this segment.
     #[cfg(feature = "dim2")]
-    pub fn normal(&self) -> Option<Unit<Vector<Real>>> {
-        Unit::try_new(self.scaled_normal(), crate::math::DEFAULT_EPSILON)
+    pub fn normal(&self) -> Option<UnitVector> {
+        UnitVector::new(self.scaled_normal()).ok()
     }
 
     /// Returns `None`. Exists only for API similarity with the 2D barry.
     #[cfg(feature = "dim3")]
-    pub fn normal(&self) -> Option<Unit<Vector<Real>>> {
+    pub fn normal(&self) -> Option<UnitVector> {
         None
     }
 
     /// The normalized counterclockwise normal of this segment, assuming it lies on the plane
     /// with the normal collinear to the given axis (0 = X, 1 = Y, 2 = Z).
     #[cfg(feature = "dim3")]
-    pub fn planar_normal(&self, plane_axis: u8) -> Option<Unit<Vector<Real>>> {
-        Unit::try_new(
-            self.scaled_planar_normal(plane_axis),
-            crate::math::DEFAULT_EPSILON,
-        )
+    pub fn planar_normal(&self, plane_axis: u8) -> Option<UnitVector> {
+        UnitVector::new(self.scaled_planar_normal(plane_axis)).ok()
     }
 
     /// Applies the isometry `m` to the vertices of this segment and returns the resulting segment.
-    pub fn transformed(&self, m: &Isometry<Real>) -> Self {
+    pub fn transformed(&self, m: Isometry) -> Self {
         Segment::new(m * self.a, m * self.b)
     }
 
     /// Computes the point at the given location.
-    pub fn point_at(&self, location: &SegmentPointLocation) -> Point<Real> {
+    pub fn point_at(&self, location: &SegmentPointLocation) -> Vector {
         match *location {
             SegmentPointLocation::OnVertex(0) => self.a,
             SegmentPointLocation::OnVertex(1) => self.b,
-            SegmentPointLocation::OnEdge(bcoords) => {
-                self.a * bcoords[0] + self.b.coords * bcoords[1]
-            }
+            SegmentPointLocation::OnEdge(bcoords) => self.a * bcoords[0] + self.b * bcoords[1],
             _ => panic!(),
         }
     }
 
     /// The normal of the given feature of this shape.
-    pub fn feature_normal(&self, feature: FeatureId) -> Option<Unit<Vector<Real>>> {
+    pub fn feature_normal(&self, feature: FeatureId) -> Option<UnitVector> {
         if let Some(direction) = self.direction() {
             match feature {
                 FeatureId::Vertex(id) => {
@@ -170,14 +163,14 @@ impl Segment {
                 }
                 #[cfg(feature = "dim3")]
                 FeatureId::Edge(_) => {
-                    let iamin = direction.iamin();
-                    let mut normal = Vector::zeros();
+                    let iamin = direction.abs().min_index();
+                    let mut normal = Vector::ZERO;
                     normal[iamin] = 1.0;
                     normal -= *direction * direction[iamin];
-                    Some(Unit::new_normalize(normal))
+                    Some(UnitVector::new(normal).unwrap())
                 }
                 FeatureId::Face(id) => {
-                    let mut dir = Vector::zeros();
+                    let mut dir = Vector::ZERO;
                     if id == 0 {
                         dir[0] = direction[1];
                         dir[1] = -direction[0];
@@ -185,20 +178,20 @@ impl Segment {
                         dir[0] = -direction[1];
                         dir[1] = direction[0];
                     }
-                    Some(Unit::new_unchecked(dir))
+                    Some(UnitVector::from_normalized(dir))
                 }
                 _ => None,
             }
         } else {
-            Some(Vector::y_axis())
+            Some(UnitVector::Y)
         }
     }
 }
 
 impl SupportMap for Segment {
     #[inline]
-    fn local_support_point(&self, dir: &Vector<Real>) -> Point<Real> {
-        if self.a.coords.dot(dir) > self.b.coords.dot(dir) {
+    fn local_support_point(&self, dir: Vector) -> Vector {
+        if self.a.dot(dir) > self.b.dot(dir) {
             self.a
         } else {
             self.b
@@ -206,15 +199,15 @@ impl SupportMap for Segment {
     }
 }
 
-impl From<[Point<Real>; 2]> for Segment {
-    fn from(arr: [Point<Real>; 2]) -> Self {
+impl From<[Vector; 2]> for Segment {
+    fn from(arr: [Vector; 2]) -> Self {
         *Self::from_array(&arr)
     }
 }
 
 /*
 impl ConvexPolyhedron for Segment {
-    fn vertex(&self, id: FeatureId) -> Point<Real> {
+    fn vertex(&self, id: FeatureId) -> Vector {
         if id.unwrap_vertex() == 0 {
             self.a
         } else {
@@ -223,7 +216,7 @@ impl ConvexPolyhedron for Segment {
     }
 
     #[cfg(feature = "dim3")]
-    fn edge(&self, _: FeatureId) -> (Point<Real>, Point<Real>, FeatureId, FeatureId) {
+    fn edge(&self, _: FeatureId) -> (Vector, Vector, FeatureId, FeatureId) {
         (self.a, self.b, FeatureId::Vertex(0), FeatureId::Vertex(1))
     }
 
@@ -261,13 +254,13 @@ impl ConvexPolyhedron for Segment {
     #[cfg(feature = "dim2")]
     fn support_face_toward(
         &self,
-        m: &Isometry<Real>,
-        dir: &Unit<Vector<Real>>,
+        m: Isometry,
+        dir: UnitVector,
         face: &mut ConvexPolygonalFeature,
     ) {
         let seg_dir = self.scaled_direction();
 
-        if dir.perp(&seg_dir) >= 0.0 {
+        if dir.perp(seg_dir) >= 0.0 {
             self.face(FeatureId::Face(0), face);
         } else {
             self.face(FeatureId::Face(1), face);
@@ -278,8 +271,8 @@ impl ConvexPolyhedron for Segment {
     #[cfg(feature = "dim3")]
     fn support_face_toward(
         &self,
-        m: &Isometry<Real>,
-        _: &Unit<Vector<Real>>,
+        m: Isometry,
+        _: UnitVector,
         face: &mut ConvexPolygonalFeature,
     ) {
         face.clear();
@@ -292,8 +285,8 @@ impl ConvexPolyhedron for Segment {
 
     fn support_feature_toward(
         &self,
-        transform: &Isometry<Real>,
-        dir: &Unit<Vector<Real>>,
+        transform: Isometry,
+        dir: UnitVector,
         eps: Real,
         face: &mut ConvexPolygonalFeature,
     ) {
@@ -302,7 +295,7 @@ impl ConvexPolyhedron for Segment {
         let ceps = ComplexField::sin(eps);
 
         if let Some(seg_dir) = seg.direction() {
-            let cang = dir.dot(&seg_dir);
+            let cang = dir.dot(seg_dir);
 
             if cang > ceps {
                 face.set_feature_id(FeatureId::Vertex(1));
@@ -320,7 +313,7 @@ impl ConvexPolyhedron for Segment {
                 }
                 #[cfg(feature = "dim2")]
                 {
-                    if dir.perp(&seg_dir) >= 0.0 {
+                    if dir.perp(seg_dir) >= 0.0 {
                         seg.face(FeatureId::Face(0), face);
                     } else {
                         seg.face(FeatureId::Face(1), face);
@@ -330,7 +323,7 @@ impl ConvexPolyhedron for Segment {
         }
     }
 
-    fn support_feature_id_toward(&self, local_dir: &Unit<Vector<Real>>) -> FeatureId {
+    fn support_feature_id_toward(&self, local_dir: UnitVector) -> FeatureId {
         if let Some(seg_dir) = self.direction() {
             let eps: Real = na::convert::<f64, Real>(f64::consts::PI / 180.0);
             let seps = ComplexField::sin(eps);

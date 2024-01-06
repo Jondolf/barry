@@ -1,10 +1,8 @@
 use crate::bounding_volume::{Aabb, SimdAabb};
-use crate::math::{Real, Vector};
+use crate::math::{SimdVector, Vector};
 use crate::partitioning::qbvh::storage::QbvhStorage;
 use crate::utils::DefaultStorage;
 use bitflags::bitflags;
-
-use na::SimdValue;
 
 #[cfg(feature = "rkyv")]
 use rkyv::{bytecheck, CheckBytes};
@@ -389,10 +387,10 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
     /// Computes a scaled version of this Qbvh.
     ///
     /// This will apply the scale to each Aabb on this BVH.
-    pub fn scaled(mut self, scale: &Vector<Real>) -> Self {
+    pub fn scaled(mut self, scale: Vector) -> Self {
         self.root_aabb = self.root_aabb.scaled(scale);
         for node in &mut self.nodes {
-            node.simd_aabb = node.simd_aabb.scaled(&Vector::splat(*scale));
+            node.simd_aabb = node.simd_aabb.scaled(SimdVector::splat(scale));
         }
         self
     }
@@ -408,14 +406,14 @@ impl<LeafData: IndexedData, Storage: QbvhStorage<LeafData>> GenericQbvh<LeafData
 #[cfg(test)]
 mod test {
     use crate::bounding_volume::Aabb;
-    use crate::math::{Point, Vector};
+    use crate::math::Vector;
     use crate::partitioning::Qbvh;
 
     #[test]
     fn multiple_identical_aabb_stack_overflow() {
         // A stack overflow was caused during the construction of the
         // Qbvh with more than four Aabb with the same center.
-        let aabb = Aabb::new(Point::origin(), Vector::repeat(1.0).into());
+        let aabb = Aabb::new(Vector::ZERO, Vector::ONE);
 
         for k in 0u32..20 {
             let mut tree = Qbvh::new();

@@ -1,7 +1,5 @@
-extern crate nalgebra as na;
-
-use na::Isometry3;
 use barry3d::bounding_volume::BoundingVolume;
+use barry3d::math::Isometry3;
 use barry3d::shape::Ball;
 
 fn main() {
@@ -11,14 +9,14 @@ fn main() {
     let ball1 = Ball::new(0.5);
     let ball2 = Ball::new(1.0);
 
-    let ball1_pos = Isometry3::translation(0.0, 1.0, 0.0);
-    let ball2_pos = Isometry3::identity(); // Identity matrix.
+    let ball1_pos = Isometry3::from_xyz(0.0, 1.0, 0.0);
+    let ball2_pos = Isometry3::IDENTITY; // Identity matrix.
 
     /*
      * Compute their axis-aligned bounding boxes.
      */
-    let aabb_ball1 = ball1.aabb(&ball1_pos);
-    let aabb_ball2 = ball2.aabb(&ball2_pos);
+    let aabb_ball1 = ball1.aabb(ball1_pos);
+    let aabb_ball2 = ball2.aabb(ball2_pos);
 
     // Merge the two boxes.
     let bounding_aabb = aabb_ball1.merged(&aabb_ball2);

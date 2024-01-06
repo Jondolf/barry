@@ -1,20 +1,17 @@
-use crate::math::Real;
-use crate::num::Bounded;
-use na;
+use crate::math::{AnyReal, AnyVector};
 #[cfg(feature = "dim3")]
-use {crate::bounding_volume, crate::math::Point};
+use crate::{
+    bounding_volume,
+    math::{Real, Vector},
+};
 
 /// Returns the index of the support point of a list of points.
-pub fn support_point_id<const D: usize>(
-    direction: &na::SVector<Real, D>,
-    points: &[na::Point<Real, D>],
-) -> Option<usize> {
+pub fn support_point_id<V: AnyVector>(direction: V, points: &[V]) -> Option<usize> {
     let mut argmax = None;
-    let _max: Real = Bounded::max_value();
-    let mut max = -_max;
+    let mut max = -V::Real::MAX;
 
-    for (id, pt) in points.iter().enumerate() {
-        let dot = direction.dot(&pt.coords);
+    for (id, pt) in points.iter().copied().enumerate() {
+        let dot = direction.dot(pt);
 
         if dot > max {
             argmax = Some(id);
@@ -26,19 +23,19 @@ pub fn support_point_id<const D: usize>(
 }
 
 /// Returns the index of the support point of an indexed list of points.
-pub fn indexed_support_point_id<I, const D: usize>(
-    direction: &na::SVector<Real, D>,
-    points: &[na::Point<Real, D>],
+pub fn indexed_support_point_id<I, V: AnyVector>(
+    direction: V,
+    points: &[V],
     idx: I,
 ) -> Option<usize>
 where
     I: Iterator<Item = usize>,
 {
     let mut argmax = None;
-    let mut max = -Real::MAX;
+    let mut max = -V::Real::MAX;
 
     for i in idx.into_iter() {
-        let dot = direction.dot(&points[i].coords);
+        let dot = direction.dot(points[i]);
 
         if dot > max {
             argmax = Some(i);
@@ -51,19 +48,19 @@ where
 
 /// Returns the number `n` such that `points[idx.nth(n)]` is the support point.
 #[cfg(feature = "dim3")] // We only use this in 3D right now.
-pub fn indexed_support_point_nth<I, const D: usize>(
-    direction: &na::SVector<Real, D>,
-    points: &[na::Point<Real, D>],
+pub fn indexed_support_point_nth<I, V: AnyVector>(
+    direction: V,
+    points: &[V],
     idx: I,
 ) -> Option<usize>
 where
     I: Iterator<Item = usize>,
 {
     let mut argmax = None;
-    let mut max = -Real::MAX;
+    let mut max = -V::Real::MAX;
 
     for (k, i) in idx.into_iter().enumerate() {
-        let dot = direction.dot(&points[i].coords);
+        let dot = direction.dot(points[i]);
 
         if dot > max {
             argmax = Some(k);
@@ -76,13 +73,13 @@ where
 
 /// Scale and center the given set of point depending on their Aabb.
 #[cfg(feature = "dim3")]
-pub fn normalize(coords: &mut [Point<Real>]) -> (Point<Real>, Real) {
-    let aabb = bounding_volume::details::local_point_cloud_aabb(&coords[..]);
-    let diag = na::distance(&aabb.mins, &aabb.maxs);
+pub fn normalize(coords: &mut [Vector]) -> (Vector, Real) {
+    let aabb = bounding_volume::details::local_point_cloud_aabb(&*coords);
+    let diag = aabb.mins.distance(aabb.maxs);
     let center = aabb.center();
 
     for c in coords.iter_mut() {
-        *c = (*c + (-center.coords)) / diag;
+        *c = (*c - center) / diag;
     }
 
     (center, diag)

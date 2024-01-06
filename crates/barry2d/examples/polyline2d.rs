@@ -1,14 +1,12 @@
-extern crate nalgebra as na;
-
-use na::Point2;
+use barry2d::math::Vector2;
 use barry2d::shape::Polyline;
 
 fn main() {
     let points = vec![
-        Point2::new(0.0, 1.0),
-        Point2::new(-1.0, -1.0),
-        Point2::new(0.0, -0.5),
-        Point2::new(1.0, -1.0),
+        Vector2::new(0.0, 1.0),
+        Vector2::new(-1.0, -1.0),
+        Vector2::new(0.0, -0.5),
+        Vector2::new(1.0, -1.0),
     ];
 
     let indices = vec![

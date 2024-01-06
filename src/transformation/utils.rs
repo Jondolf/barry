@@ -1,26 +1,23 @@
 //! Utilities useful for various generations tasks.
 
-use crate::math::{Isometry, Point, Real, Vector};
-use crate::na::ComplexField;
+use crate::math::{Isometry, Real, Rotation, Vector};
 #[cfg(feature = "dim3")]
 use {crate::math::DIM, num::Zero};
 
 /// Applies in-place a transformation to an array of points.
-pub fn transform(points: &mut [Point<Real>], m: Isometry<Real>) {
+pub fn transform(points: &mut [Vector], m: Isometry) {
     points.iter_mut().for_each(|p| *p = m * *p);
 }
 
 /// Returns the transformed version of a vector of points.
-pub fn transformed(mut points: Vec<Point<Real>>, m: Isometry<Real>) -> Vec<Point<Real>> {
+pub fn transformed(mut points: Vec<Vector>, m: Isometry) -> Vec<Vector> {
     transform(&mut points, m);
     points
 }
 
 /// Returns the transformed version of a vector of points.
-pub fn scaled(mut points: Vec<Point<Real>>, scale: Vector<Real>) -> Vec<Point<Real>> {
-    points
-        .iter_mut()
-        .for_each(|p| p.coords.component_mul_assign(&scale));
+pub fn scaled(mut points: Vec<Vector>, scale: Vector) -> Vec<Vector> {
+    points.iter_mut().for_each(|p| *p *= scale);
     points
 }
 
@@ -28,14 +25,14 @@ pub fn scaled(mut points: Vec<Point<Real>>, scale: Vector<Real>) -> Vec<Point<Re
 /// Pushes a discretized counterclockwise circle to a buffer.
 #[cfg(feature = "dim3")]
 #[inline]
-pub fn push_circle(radius: Real, nsubdiv: u32, dtheta: Real, y: Real, out: &mut Vec<Point<Real>>) {
+pub fn push_circle(radius: Real, nsubdiv: u32, dtheta: Real, y: Real, out: &mut Vec<Vector>) {
     let mut curr_theta = Real::zero();
 
     for _ in 0..nsubdiv {
-        out.push(Point::new(
-            ComplexField::cos(curr_theta) * radius,
+        out.push(Vector::new(
+            curr_theta.cos() * radius,
             y.clone(),
-            ComplexField::sin(curr_theta) * radius,
+            curr_theta.sin() * radius,
         ));
         curr_theta = curr_theta + dtheta;
     }
@@ -45,15 +42,15 @@ pub fn push_circle(radius: Real, nsubdiv: u32, dtheta: Real, y: Real, out: &mut 
 /// The circle is contained on the plane spanned by the `x` and `y` axis.
 #[inline]
 #[cfg(feature = "dim2")]
-pub fn push_xy_arc(radius: Real, nsubdiv: u32, dtheta: Real, out: &mut Vec<Point<Real>>) {
+pub fn push_xy_arc(radius: Real, nsubdiv: u32, dtheta: Real, out: &mut Vec<Vector>) {
     let mut curr_theta: Real = 0.0;
 
     for _ in 0..nsubdiv {
-        let mut pt_coords = Vector::zeros();
+        let mut pt_coords = Vector::ZERO;
 
-        pt_coords[0] = ComplexField::cos(curr_theta) * radius;
-        pt_coords[1] = ComplexField::sin(curr_theta) * radius;
-        out.push(Point::from(pt_coords));
+        pt_coords[0] = curr_theta.cos() * radius;
+        pt_coords[1] = curr_theta.sin() * radius;
+        out.push(Vector::from(pt_coords));
 
         curr_theta = curr_theta + dtheta;
     }
@@ -183,11 +180,11 @@ pub fn push_open_circle_outline_indices(indices: &mut Vec<[u32; 2]>, range: std:
 /// the `start` and `end` points).
 #[cfg(feature = "dim3")]
 pub fn push_arc_and_idx(
-    center: Point<Real>,
+    center: Vector,
     start: u32,
     end: u32,
     nsubdivs: u32,
-    out_vtx: &mut Vec<Point<Real>>,
+    out_vtx: &mut Vec<Vector>,
     out_idx: &mut Vec<[u32; 2]>,
 ) {
     let base = out_vtx.len() as u32;
@@ -204,44 +201,41 @@ pub fn push_arc_and_idx(
 /// Pushes to `out` a set of points forming an arc starting at `start`, ending at `end` with
 /// revolution center at `center`. The curve is approximated by pushing `nsubdivs` points.
 /// The `start` and `end` point are not pushed to `out`.
-pub fn push_arc(
-    center: Point<Real>,
-    start: Point<Real>,
-    end: Point<Real>,
-    nsubdivs: u32,
-    out: &mut Vec<Point<Real>>,
-) {
+pub fn push_arc(center: Vector, start: Vector, end: Vector, nsubdivs: u32, out: &mut Vec<Vector>) {
     assert!(nsubdivs > 0);
-    if let (Some((start_dir, start_len)), Some((end_dir, end_len))) = (
-        na::Unit::try_new_and_get(start - center, 0.0),
-        na::Unit::try_new_and_get(end - center, 0.0),
-    ) {
-        let len_inc = (end_len - start_len) / nsubdivs as Real;
 
-        #[cfg(feature = "dim2")]
-        let rot = Some(na::UnitComplex::scaled_rotation_between_axis(
-            &start_dir,
-            &end_dir,
-            1.0 / nsubdivs as Real,
-        ));
+    let start_len = (start - center).length();
+    let end_len = (end - center).length();
 
-        #[cfg(feature = "dim3")]
-        let rot = na::UnitQuaternion::scaled_rotation_between_axis(
-            &start_dir,
-            &end_dir,
-            1.0 / nsubdivs as Real,
-        );
+    let start_dir = (start - center) / start_len;
+    let end_dir = (end - center) / end_len;
 
-        if let Some(rot) = rot {
-            let mut curr_dir = start_dir;
-            let mut curr_len = start_len;
+    if !start_dir.is_finite() || !end_dir.is_finite() {
+        return;
+    }
 
-            for _ in 0..nsubdivs - 1 {
-                curr_dir = rot * curr_dir;
-                curr_len += len_inc;
+    let len_inc = (end_len - start_len) / nsubdivs as Real;
 
-                out.push(center + *curr_dir * curr_len);
-            }
+    #[cfg(feature = "dim2")]
+    let rot = Some(Rotation::from_scaled_rotation_arc_colinear(
+        start_dir,
+        end_dir,
+        1.0 / nsubdivs as Real,
+    ));
+
+    #[cfg(feature = "dim3")]
+    let rot =
+        Rotation::from_scaled_rotation_arc_colinear(start_dir, end_dir, 1.0 / nsubdivs as Real);
+
+    if let Some(rot) = rot {
+        let mut curr_dir = start_dir;
+        let mut curr_len = start_len;
+
+        for _ in 0..nsubdivs - 1 {
+            curr_dir = rot * curr_dir;
+            curr_len += len_inc;
+
+            out.push(center + curr_dir * curr_len);
         }
     }
 }
@@ -268,11 +262,13 @@ pub fn apply_revolution(
     collapse_top: bool,
     circle_ranges: &[std::ops::Range<u32>],
     nsubdivs: u32,
-    out_vtx: &mut Vec<Point<Real>>, // Must be set to the half-profile.
+    out_vtx: &mut Vec<Vector>, // Must be set to the half-profile.
     out_idx: &mut Vec<[u32; 2]>,
 ) {
-    use na::RealField;
-    let ang_increment = Real::two_pi() / (nsubdivs as Real);
+    use crate::math;
+    use bevy_math::Vec3Swizzles;
+
+    let ang_increment = math::real_consts::TAU / (nsubdivs as Real);
     let angs = [
         ang_increment * (nsubdivs / 4) as Real,
         ang_increment * (nsubdivs / 2) as Real,
@@ -297,7 +293,7 @@ pub fn apply_revolution(
     // Push rotated profiles.
     for i in 0..3 {
         let base = out_vtx.len() as u32;
-        let rot = na::UnitQuaternion::new(Vector::y() * angs[i]);
+        let rot = Rotation::from_scaled_axis(Vector::Y * angs[i]);
 
         if collapse_bottom {
             out_idx.push([0, base]);
@@ -323,13 +319,7 @@ pub fn apply_revolution(
         for i in circle_range.clone() {
             let pt = out_vtx[i as usize];
             let base = out_vtx.len() as u32;
-            push_circle(
-                pt.coords.xz().norm(),
-                nsubdivs,
-                ang_increment,
-                pt.y,
-                out_vtx,
-            );
+            push_circle(pt.xz().length(), nsubdivs, ang_increment, pt.y, out_vtx);
             push_circle_outline_indices(out_idx, base..base + nsubdivs)
         }
     }

@@ -1,6 +1,4 @@
-use na::Unit;
-
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{Isometry, Real, UnitVector, Vector};
 use crate::query::{DefaultQueryDispatcher, QueryDispatcher, Unsupported};
 use crate::shape::Shape;
 
@@ -33,19 +31,19 @@ pub struct TOI {
     /// The local-space closest point on the first shape at the time of impact.
     ///
     /// Undefined if `status` is `Penetrating`.
-    pub witness1: Point<Real>,
+    pub witness1: Vector,
     /// The local-space closest point on the second shape at the time of impact.
     ///
     /// Undefined if `status` is `Penetrating`.
-    pub witness2: Point<Real>,
+    pub witness2: Vector,
     /// The local-space outward normal on the first shape at the time of impact.
     ///
     /// Undefined if `status` is `Penetrating`.
-    pub normal1: Unit<Vector<Real>>,
+    pub normal1: UnitVector,
     /// The local-space outward normal on the second shape at the time of impact.
     ///
     /// Undefined if `status` is `Penetrating`.
-    pub normal2: Unit<Vector<Real>>,
+    pub normal2: UnitVector,
     /// The way the time-of-impact computation algorithm terminated.
     pub status: TOIStatus,
 }
@@ -66,7 +64,7 @@ impl TOI {
     }
 
     /// Transform `self.witness1` and `self.normal1` by `pos`.
-    pub fn transform1_by(&self, pos: &Isometry<Real>) -> Self {
+    pub fn transform1_by(&self, pos: Isometry) -> Self {
         Self {
             toi: self.toi,
             witness1: pos * self.witness1,
@@ -83,16 +81,16 @@ impl TOI {
 ///
 /// Returns `0.0` if the objects are touching or penetrating.
 pub fn time_of_impact(
-    pos1: &Isometry<Real>,
-    vel1: &Vector<Real>,
+    pos1: Isometry,
+    vel1: Vector,
     g1: &dyn Shape,
-    pos2: &Isometry<Real>,
-    vel2: &Vector<Real>,
+    pos2: Isometry,
+    vel2: Vector,
     g2: &dyn Shape,
     max_toi: Real,
     stop_at_penetration: bool,
 ) -> Result<Option<TOI>, Unsupported> {
     let pos12 = pos1.inv_mul(pos2);
-    let vel12 = pos1.inverse_transform_vector(&(vel2 - vel1));
-    DefaultQueryDispatcher.time_of_impact(&pos12, &vel12, g1, g2, max_toi, stop_at_penetration)
+    let vel12 = pos1.rotation.inverse() * (vel2 - vel1);
+    DefaultQueryDispatcher.time_of_impact(pos12, vel12, g1, g2, max_toi, stop_at_penetration)
 }

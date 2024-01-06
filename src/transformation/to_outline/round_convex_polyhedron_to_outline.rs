@@ -1,11 +1,10 @@
-use crate::math::Real;
+use crate::math::Vector3;
 use crate::shape::RoundConvexPolyhedron;
 use crate::transformation::utils;
-use na::Point3;
 
 impl RoundConvexPolyhedron {
     /// Outlines this round convex polyhedron’s shape using polylines.
-    pub fn to_outline(&self, nsubdivs: u32) -> (Vec<Point3<Real>>, Vec<[u32; 2]>) {
+    pub fn to_outline(&self, nsubdivs: u32) -> (Vec<Vector3>, Vec<[u32; 2]>) {
         let mut out_vtx = vec![];
         let mut out_idx = vec![];
         let poly = &self.inner_shape;

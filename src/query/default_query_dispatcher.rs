@@ -1,4 +1,4 @@
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{Isometry, Real, Vector};
 use crate::query::{
     self, details::NonlinearTOIMode, ClosestPoints, Contact, NonlinearRigidMotion, QueryDispatcher,
     Unsupported, TOI,
@@ -17,13 +17,13 @@ pub struct DefaultQueryDispatcher;
 impl QueryDispatcher for DefaultQueryDispatcher {
     fn intersection_test(
         &self,
-        pos12: &Isometry<Real>,
+        pos12: Isometry,
         shape1: &dyn Shape,
         shape2: &dyn Shape,
     ) -> Result<bool, Unsupported> {
         if let (Some(b1), Some(b2)) = (shape1.as_ball(), shape2.as_ball()) {
-            let p12 = Point::from(pos12.translation.vector);
-            Ok(query::details::intersection_test_ball_ball(&p12, b1, b2))
+            let p12 = pos12.translation;
+            Ok(query::details::intersection_test_ball_ball(p12, b1, b2))
         } else if let (Some(c1), Some(c2)) = (shape1.as_cuboid(), shape2.as_cuboid()) {
             Ok(query::details::intersection_test_cuboid_cuboid(
                 pos12, c1, c2,
@@ -81,7 +81,7 @@ impl QueryDispatcher for DefaultQueryDispatcher {
     /// Returns `0.0` if the objects are touching or penetrating.
     fn distance(
         &self,
-        pos12: &Isometry<Real>,
+        pos12: Isometry,
         shape1: &dyn Shape,
         shape2: &dyn Shape,
     ) -> Result<Real, Unsupported> {
@@ -89,8 +89,8 @@ impl QueryDispatcher for DefaultQueryDispatcher {
         let ball2 = shape2.as_ball();
 
         if let (Some(b1), Some(b2)) = (ball1, ball2) {
-            let p2 = Point::from(pos12.translation.vector);
-            Ok(query::details::distance_ball_ball(b1, &p2, b2))
+            let p2 = pos12.translation;
+            Ok(query::details::distance_ball_ball(b1, p2, b2))
         } else if let (Some(b1), true) = (ball1, shape2.is_convex()) {
             Ok(query::details::distance_ball_convex_polyhedron(
                 pos12, b1, shape2,
@@ -137,7 +137,7 @@ impl QueryDispatcher for DefaultQueryDispatcher {
 
     fn contact(
         &self,
-        pos12: &Isometry<Real>,
+        pos12: Isometry,
         shape1: &dyn Shape,
         shape2: &dyn Shape,
         prediction: Real,
@@ -193,7 +193,7 @@ impl QueryDispatcher for DefaultQueryDispatcher {
 
     fn closest_points(
         &self,
-        pos12: &Isometry<Real>,
+        pos12: Isometry,
         shape1: &dyn Shape,
         shape2: &dyn Shape,
         max_dist: Real,
@@ -269,8 +269,8 @@ impl QueryDispatcher for DefaultQueryDispatcher {
 
     fn time_of_impact(
         &self,
-        pos12: &Isometry<Real>,
-        local_vel12: &Vector<Real>,
+        pos12: Isometry,
+        local_vel12: Vector,
         shape1: &dyn Shape,
         shape2: &dyn Shape,
         max_toi: Real,
@@ -416,10 +416,10 @@ impl QueryDispatcher for DefaultQueryDispatcher {
                 );
             }
             /* } else if let (Some(p1), Some(s2)) = (shape1.as_shape::<HalfSpace>(), shape2.as_support_map()) {
-            //        query::details::nonlinear_time_of_impact_halfspace_support_map(m1, vel1, p1, m2, vel2, s2)
+            query::details::nonlinear_time_of_impact_halfspace_support_map(m1, vel1, p1, m2, vel2, s2)
                     unimplemented!()
                 } else if let (Some(s1), Some(p2)) = (shape1.as_support_map(), shape2.as_shape::<HalfSpace>()) {
-            //        query::details::nonlinear_time_of_impact_support_map_halfspace(m1, vel1, s1, m2, vel2, p2)
+            query::details::nonlinear_time_of_impact_support_map_halfspace(m1, vel1, s1, m2, vel2, p2)
                     unimplemented!() */
 
             Err(Unsupported)
@@ -436,7 +436,7 @@ where
 {
     fn contact_manifolds(
         &self,
-        pos12: &Isometry<Real>,
+        pos12: Isometry,
         shape1: &dyn Shape,
         shape2: &dyn Shape,
         prediction: Real,
@@ -467,7 +467,7 @@ where
                     contact_manifolds_heightfield_composite_shape(
                         self,
                         pos12,
-                        &pos12.inverse(),
+                        pos12.inverse(),
                         shape1.as_heightfield().unwrap(),
                         composite2,
                         prediction,
@@ -485,7 +485,7 @@ where
                 if let Some(composite1) = composite1 {
                     contact_manifolds_heightfield_composite_shape(
                         self,
-                        &pos12.inverse(),
+                        pos12.inverse(),
                         pos12,
                         shape2.as_heightfield().unwrap(),
                         composite1,
@@ -508,7 +508,7 @@ where
                 } else if let Some(composite2) = composite2 {
                     contact_manifolds_composite_shape_shape(
                         self,
-                        &pos12.inverse(),
+                        pos12.inverse(),
                         composite2,
                         shape1,
                         prediction,
@@ -537,7 +537,7 @@ where
 
     fn contact_manifold_convex_convex(
         &self,
-        pos12: &Isometry<Real>,
+        pos12: Isometry,
         shape1: &dyn Shape,
         shape2: &dyn Shape,
         prediction: Real,
@@ -588,7 +588,7 @@ where
             (_, ShapeType::HalfSpace) => {
                 if let Some((pfm1, border_radius1)) = shape1.as_polygonal_feature_map() {
                     contact_manifold_halfspace_pfm(
-                        &pos12.inverse(),
+                        pos12.inverse(),
                         shape2.as_halfspace().unwrap(),
                         pfm1,
                         border_radius1,

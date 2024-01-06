@@ -1,16 +1,13 @@
 use crate::mass_properties::MassProperties;
-use crate::math::{PrincipalAngularInertia, Real, Vector};
 #[cfg(feature = "dim3")]
-use {
-    crate::math::{Point, Rotation},
-    na::RealField,
-};
+use crate::math::{self, Rotation};
+use crate::math::{PrincipalAngularInertia, Real, Vector};
 
 impl MassProperties {
     pub(crate) fn cylinder_y_volume_unit_inertia(
         half_height: Real,
         radius: Real,
-    ) -> (Real, PrincipalAngularInertia<Real>) {
+    ) -> (Real, PrincipalAngularInertia) {
         #[cfg(feature = "dim2")]
         {
             Self::cuboid_volume_unit_inertia(Vector::new(radius, half_height))
@@ -18,7 +15,7 @@ impl MassProperties {
 
         #[cfg(feature = "dim3")]
         {
-            let volume = half_height * radius * radius * Real::pi() * 2.0;
+            let volume = half_height * radius * radius * math::real_consts::PI * 2.0;
             let sq_radius = radius * radius;
             let sq_height = half_height * half_height * 4.0;
             let off_principal = (sq_radius * 3.0 + sq_height) / 12.0;
@@ -35,10 +32,10 @@ impl MassProperties {
         let cyl_mass = cyl_vol * density;
 
         Self::with_principal_inertia_frame(
-            Point::origin(),
+            Vector::ZERO,
             cyl_mass,
             cyl_unit_i * cyl_mass,
-            Rotation::identity(),
+            Rotation::IDENTITY,
         )
     }
 }

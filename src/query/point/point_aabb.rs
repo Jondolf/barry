@@ -1,28 +1,22 @@
 use crate::bounding_volume::Aabb;
-use crate::math::{Point, Real, Vector, DIM};
-use crate::num::{Bounded, Zero};
+use crate::math::{Real, Vector, DIM};
 use crate::query::{PointProjection, PointQuery};
 use crate::shape::FeatureId;
-use na;
 
 impl Aabb {
-    fn do_project_local_point(
-        &self,
-        pt: &Point<Real>,
-        solid: bool,
-    ) -> (bool, Point<Real>, Vector<Real>) {
+    fn do_project_local_point(&self, pt: Vector, solid: bool) -> (bool, Vector, Vector) {
         let mins_pt = self.mins - pt;
         let pt_maxs = pt - self.maxs;
-        let shift = mins_pt.sup(&na::zero()) - pt_maxs.sup(&na::zero());
+        let shift = mins_pt.max(Vector::ZERO) - pt_maxs.max(Vector::ZERO);
 
-        let inside = shift.is_zero();
+        let inside = shift == Vector::ZERO;
 
         if !inside {
             (false, pt + shift, shift)
         } else if solid {
-            (true, *pt, shift)
+            (true, pt, shift)
         } else {
-            let _max: Real = Bounded::max_value();
+            let _max = Real::MAX;
             let mut best = -_max;
             let mut is_mins = false;
             let mut best_id = 0;
@@ -44,7 +38,7 @@ impl Aabb {
                 }
             }
 
-            let mut shift: Vector<Real> = na::zero();
+            let mut shift = Vector::ZERO;
 
             if is_mins {
                 shift[best_id] = best;
@@ -59,7 +53,7 @@ impl Aabb {
 
 impl PointQuery for Aabb {
     #[inline]
-    fn project_local_point(&self, pt: &Point<Real>, solid: bool) -> PointProjection {
+    fn project_local_point(&self, pt: Vector, solid: bool) -> PointProjection {
         let (inside, ls_pt, _) = self.do_project_local_point(pt, solid);
         PointProjection::new(inside, ls_pt)
     }
@@ -67,10 +61,7 @@ impl PointQuery for Aabb {
     #[allow(unused_assignments)] // For last_zero_shift which is used only in 3D.
     #[allow(unused_variables)] // For last_zero_shift which is used only in 3D.
     #[inline]
-    fn project_local_point_and_get_feature(
-        &self,
-        pt: &Point<Real>,
-    ) -> (PointProjection, FeatureId) {
+    fn project_local_point_and_get_feature(&self, pt: Vector) -> (PointProjection, FeatureId) {
         let (inside, ls_pt, shift) = self.do_project_local_point(pt, false);
         let proj = PointProjection::new(inside, ls_pt);
         let mut nzero_shifts = 0;
@@ -78,7 +69,7 @@ impl PointQuery for Aabb {
         let mut last_not_zero_shift = 0;
 
         for i in 0..DIM {
-            if shift[i].is_zero() {
+            if shift[i] == 0.0 {
                 nzero_shifts += 1;
                 last_zero_shift = i;
             } else {
@@ -132,16 +123,16 @@ impl PointQuery for Aabb {
     }
 
     #[inline]
-    fn distance_to_local_point(&self, pt: &Point<Real>, solid: bool) -> Real {
+    fn distance_to_local_point(&self, pt: Vector, solid: bool) -> Real {
         let mins_pt = self.mins - pt;
         let pt_maxs = pt - self.maxs;
-        let shift = mins_pt.sup(&pt_maxs).sup(&na::zero());
+        let shift = mins_pt.max(pt_maxs).max(Vector::ZERO);
 
-        if solid || !shift.is_zero() {
-            shift.norm()
+        if solid || shift != Vector::ZERO {
+            shift.length()
         } else {
-            // FIXME: optimize that.
-            -na::distance(pt, &self.project_local_point(pt, solid).point)
+            // FIXME: Optimize
+            -pt.distance(self.project_local_point(pt, solid).point)
         }
     }
 }

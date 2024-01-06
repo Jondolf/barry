@@ -1,8 +1,9 @@
 use crate::bounding_volume::{Aabb, SimdAabb};
-use crate::math::Vector;
-use crate::math::{Point, Real};
+use crate::math::{Real, Vector};
 use crate::query::SplitResult;
 use crate::simd::SimdReal;
+#[cfg(feature = "dim3")]
+use crate::MinMaxIndex;
 use simba::simd::SimdValue;
 
 use super::utils::split_indices_wrt_dim;
@@ -34,7 +35,7 @@ pub trait QbvhDataSplitter<LeafData> {
     fn split_dataset<'idx>(
         &mut self,
         subdiv_dims: [usize; 2],
-        center: Point<Real>,
+        center: Vector,
         indices: &'idx mut [usize],
         indices_workspace: &'idx mut Vec<usize>,
         proxies: BuilderProxies<LeafData>,
@@ -62,7 +63,7 @@ impl<LeafData> QbvhDataSplitter<LeafData> for CenterDataSplitter {
     fn split_dataset<'idx>(
         &mut self,
         subdiv_dims: [usize; 2],
-        center: Point<Real>,
+        center: Vector,
         indices: &'idx mut [usize],
         _: &'idx mut Vec<usize>,
         proxies: BuilderProxies<LeafData>,
@@ -75,7 +76,7 @@ impl CenterDataSplitter {
     pub(crate) fn split_dataset_wo_workspace<'idx>(
         &self,
         subdiv_dims: [usize; 2],
-        center: Point<Real>,
+        center: Vector,
         indices: &'idx mut [usize],
         aabbs: &[Aabb],
     ) -> [&'idx mut [usize]; 4] {
@@ -85,7 +86,7 @@ impl CenterDataSplitter {
         let (left, right) = split_indices_wrt_dim(
             indices,
             aabbs,
-            &center,
+            center,
             subdiv_dims[0],
             self.enable_fallback_split,
         );
@@ -93,14 +94,14 @@ impl CenterDataSplitter {
         let (left_bottom, left_top) = split_indices_wrt_dim(
             left,
             aabbs,
-            &center,
+            center,
             subdiv_dims[1],
             self.enable_fallback_split,
         );
         let (right_bottom, right_top) = split_indices_wrt_dim(
             right,
             aabbs,
-            &center,
+            center,
             subdiv_dims[1],
             self.enable_fallback_split,
         );
@@ -130,15 +131,15 @@ where
     fn split_dataset<'idx>(
         &mut self,
         subdiv_dims: [usize; 2],
-        center: Point<Real>,
+        center: Vector,
         indices: &'idx mut [usize],
         indices_workspace: &'idx mut Vec<usize>,
         mut proxies: BuilderProxies<LeafData>,
     ) -> [&'idx mut [usize]; 4] {
         // 1. Snap the spliting point to one fo the Aabb min/max,
         // such that at least one Aabb isn’t split along each dimension.
-        let mut split_pt = Point::from(Vector::repeat(-Real::MAX));
-        let mut split_pt_right = Point::from(Vector::repeat(Real::MAX));
+        let mut split_pt = -Vector::MAX;
+        let mut split_pt_right = Vector::MAX;
 
         for dim in subdiv_dims {
             for i in indices.iter().copied() {
@@ -367,14 +368,14 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
         // In 3D we compute the variance to not-subdivide the dimension with lowest variance.
         // Therefore variance computation is not needed in 2D because we only have 2 dimension
         // to split in the first place.
-        let mut center = Point::origin();
+        let mut center = Vector::ZERO;
         #[cfg(feature = "dim3")]
-        let mut variance = Vector::zeros();
+        let mut variance = Vector::ZERO;
 
         let center_denom = 1.0 / (indices.len() as Real);
 
         for i in &*indices {
-            let coords = aabbs[*i].center().coords;
+            let coords = aabbs[*i].center();
             center += coords * center_denom;
         }
 
@@ -383,7 +384,7 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
             let variance_denom = 1.0 / ((indices.len() - 1) as Real);
             for i in &*indices {
                 let dir_to_center = aabbs[*i].center() - center;
-                variance += dir_to_center.component_mul(&dir_to_center) * variance_denom;
+                variance += dir_to_center * dir_to_center * variance_denom;
             }
         }
 
@@ -393,7 +394,7 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
         let mut subdiv_dims = [0, 1];
         #[cfg(feature = "dim3")]
         {
-            let min = variance.imin();
+            let min = variance.min_index();
             subdiv_dims[0] = (min + 1) % 3;
             subdiv_dims[1] = (min + 2) % 3;
         }

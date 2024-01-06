@@ -1,6 +1,10 @@
+use bevy_math::Vec2Swizzles;
+
 use crate::math::{Matrix2, Real, Vector2};
 
 /// The eigen decomposition of a symmetric 2x2 matrix.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SymmetricEigen2 {
     /// The eigenvalues of the symmetric 2x2 matrix.
     pub eigenvalues: Vector2,
@@ -10,6 +14,9 @@ pub struct SymmetricEigen2 {
 
 impl SymmetricEigen2 {
     /// Computes the eigen decomposition of the given symmetric 2x2 matrix.
+    ///
+    /// The eigenvalues are returned in ascending order `eigen1 < eigen2 < eigen3`.
+    /// This can be reversed with the [`reverse`](Self::reverse) method.
     pub fn new(mat: Matrix2) -> Self {
         let eigenvalues = Self::eigenvalues(mat);
         let eigenvector1 = Self::eigenvector(mat, eigenvalues.x);
@@ -18,6 +25,14 @@ impl SymmetricEigen2 {
         Self {
             eigenvalues,
             eigenvectors: Matrix2::from_cols(eigenvector1, eigenvector2),
+        }
+    }
+
+    /// Reverses the order of the eigenvalues and their corresponding eigenvectors.
+    pub fn reverse(&self) -> Self {
+        Self {
+            eigenvalues: self.eigenvalues.yx(),
+            eigenvectors: Matrix2::from_cols(self.eigenvectors.y_axis, self.eigenvectors.x_axis),
         }
     }
 

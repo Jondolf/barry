@@ -1,12 +1,14 @@
 // The eigensolver is a Rust adaptation, with modifications, of the pseudocode and approach described in
 // "A Robust Eigensolver for 3 x 3 Symmetric Matrices" by David Eberly, Geometric Tools, Redmond WA 98052.
 // https://www.geometrictools.com/Documentation/RobustEigenSymmetric3x3.pdf
-//
-// Licensed under the Creative Commons Attribution 4.0 International License.
+
+use bevy_math::Vec3Swizzles;
 
 use crate::math::{self, Matrix3, Real, Vector3};
 
 /// The eigen decomposition of a symmetric 3x3 matrix.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SymmetricEigen3 {
     /// The eigenvalues of the symmetric 3x3 matrix.
     pub eigenvalues: Vector3,
@@ -16,6 +18,9 @@ pub struct SymmetricEigen3 {
 
 impl SymmetricEigen3 {
     /// Computes the eigen decomposition of the given symmetric 3x3 matrix.
+    ///
+    /// The eigenvalues are returned in ascending order `eigen1 < eigen2 < eigen3`.
+    /// This can be reversed with the [`reverse`](Self::reverse) method.
     pub fn new(mat: Matrix3) -> Self {
         let eigenvalues = Self::eigenvalues(mat);
         let eigenvector1 = Self::eigenvector1(mat, eigenvalues.x);
@@ -25,6 +30,18 @@ impl SymmetricEigen3 {
         Self {
             eigenvalues,
             eigenvectors: Matrix3::from_cols(eigenvector1, eigenvector2, eigenvector3),
+        }
+    }
+
+    /// Reverses the order of the eigenvalues and their corresponding eigenvectors.
+    pub fn reverse(&self) -> Self {
+        Self {
+            eigenvalues: self.eigenvalues.zyx(),
+            eigenvectors: Matrix3::from_cols(
+                self.eigenvectors.z_axis,
+                self.eigenvectors.y_axis,
+                self.eigenvectors.x_axis,
+            ),
         }
     }
 

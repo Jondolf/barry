@@ -1,4 +1,4 @@
-use na::{self, Isometry2, Vector2};
+use barry2d::math::{Isometry2, UnitVector2, Vector2};
 use barry2d::query::{self, ContactManifold, DefaultQueryDispatcher, PersistentQueryDispatcher};
 use barry2d::shape::Cuboid;
 
@@ -6,19 +6,19 @@ use barry2d::shape::Cuboid;
 #[allow(non_snake_case)]
 fn cuboid_cuboid_EPA() {
     let c = Cuboid::new(Vector2::new(2.0, 1.0));
-    let m1 = Isometry2::translation(3.5, 0.0);
-    let m2 = Isometry2::identity();
+    let m1 = Isometry2::from_xy(3.5, 0.0);
+    let m2 = Isometry2::IDENTITY;
 
-    let res = query::details::contact_support_map_support_map(&m1.inv_mul(&m2), &c, &c, 10.0)
+    let res = query::details::contact_support_map_support_map(m1.inv_mul(m2), &c, &c, 10.0)
         .expect("Penetration not found.");
     assert_eq!(res.dist, -0.5);
-    assert_eq!(res.normal1, -Vector2::x_axis());
+    assert_eq!(res.normal1, -UnitVector2::X);
 
-    let m1 = Isometry2::translation(0.0, 0.2);
-    let res = query::details::contact_support_map_support_map(&m1.inv_mul(&m2), &c, &c, 10.0)
+    let m1 = Isometry2::from_xy(0.0, 0.2);
+    let res = query::details::contact_support_map_support_map(m1.inv_mul(m2), &c, &c, 10.0)
         .expect("Penetration not found.");
     assert_eq!(res.dist, -1.8);
-    assert_eq!(res.normal1, -Vector2::y_axis());
+    assert_eq!(res.normal1, -UnitVector2::Y);
 }
 
 #[test]
@@ -39,10 +39,10 @@ fn cuboids_large_size_ratio_issue_181() {
         angle += 0.005;
 
         let pos_a = Isometry2::new(p, angle);
-        let pos_ab = pos_a.inv_mul(&pos_b);
+        let pos_ab = pos_a.inv_mul(pos_b);
         let mut manifold: ContactManifold<(), ()> = ContactManifold::new();
         dispatcher
-            .contact_manifold_convex_convex(&pos_ab, &cuboid_a, &cuboid_b, 0.0, &mut manifold)
+            .contact_manifold_convex_convex(pos_ab, &cuboid_a, &cuboid_b, 0.0, &mut manifold)
             .unwrap();
 
         if let Some(deepest) = manifold.find_deepest_contact() {

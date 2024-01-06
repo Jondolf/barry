@@ -21,27 +21,16 @@ maintenance = { status = "actively-developed" }
 [features]
 default = ["required-features", "std"]
 required-features = ["dim2", "f32"]
-std = [
-    "nalgebra/std",
-    "slab",
-    "rustc-hash",
-    "simba/std",
-    "arrayvec/std",
-    "spade",
-]
+std = ["slab", "rustc-hash", "simba/std", "arrayvec/std", "spade"]
 dim2 = []
 f32 = []
-serde-serialize = ["serde", "nalgebra/serde-serialize", "arrayvec/serde"]
-rkyv-serialize = [
-    "rkyv/validation",
-    "nalgebra/rkyv-serialize",
-    "simba/rkyv-serialize",
-]
-bytemuck-serialize = ["bytemuck", "nalgebra/convert-bytemuck"]
+serde-serialize = ["serde", "arrayvec/serde"]
+rkyv-serialize = ["rkyv/validation", "simba/rkyv-serialize"]
+bytemuck-serialize = ["bytemuck"]
 simd-stable = ["simba/wide", "simd-is-enabled"]
 simd-nightly = ["simba/packed_simd", "simd-is-enabled"]
 enhanced-determinism = ["simba/libm_force", "indexmap"]
-cuda = ["cust_core", "cust", "nalgebra/cuda"]
+cuda = ["cust_core", "cust"]
 parallel = ["rayon"]
 
 # Do not enable this feature directly. It is automatically
@@ -62,7 +51,9 @@ smallvec = "1"
 slab = { version = "0.4", optional = true }
 arrayvec = { version = "0.7", default-features = false }
 simba = { version = "0.8", default-features = false }
-nalgebra = { version = "0.32", default-features = false, features = ["libm"] }
+bevy_math = { version = "0.12", path = "../../../bevy/crates/bevy_math", default-features = false, features = [
+    "approx",
+] }
 approx = { version = "0.5", default-features = false }
 serde = { version = "1.0", optional = true, features = ["derive"] }
 rkyv = { version = "0.7.41", optional = true }
@@ -78,9 +69,15 @@ bytemuck = { version = "1", features = ["derive"], optional = true }
 cust = { version = "0.3", optional = true }
 
 [dev-dependencies]
+glam = { version = "0.25", default-features = false, features = [
+    "approx",
+    "bytemuck",
+    "rand",
+] }
 simba = { version = "0.8", default-features = false, features = [
     "partial_fixed_point_support",
 ] }
 oorandom = "11"
 ptree = "0.4.0"
 rand = { version = "0.8" }
+rand_isaac = "0.3"

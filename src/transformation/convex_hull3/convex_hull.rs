@@ -1,20 +1,19 @@
 use super::InitialMesh;
 use super::{ConvexHullError, TriangleFacet};
-use crate::math::Real;
+use crate::math::Vector3;
 use crate::transformation::convex_hull_utils::indexed_support_point_nth;
 use crate::transformation::convex_hull_utils::{indexed_support_point_id, normalize};
 use crate::utils;
-use na::{self, Point3};
 
 /// Computes the convex hull of a set of 3d points.
-pub fn convex_hull(points: &[Point3<Real>]) -> (Vec<Point3<Real>>, Vec<[u32; 3]>) {
+pub fn convex_hull(points: &[Vector3]) -> (Vec<Vector3>, Vec<[u32; 3]>) {
     try_convex_hull(points).unwrap()
 }
 
 /// Computes the convex hull of a set of 3d points.
 pub fn try_convex_hull(
-    points: &[Point3<Real>],
-) -> Result<(Vec<Point3<Real>>, Vec<[u32; 3]>), ConvexHullError> {
+    points: &[Vector3],
+) -> Result<(Vec<Vector3>, Vec<[u32; 3]>), ConvexHullError> {
     if points.is_empty() {
         return Ok((Vec::new(), Vec::new()));
     }
@@ -45,13 +44,13 @@ pub fn try_convex_hull(
         silhouette_loop_facets_and_idx.clear();
 
         if !triangles[i].valid || triangles[i].affinely_dependent {
-            i = i + 1;
+            i += 1;
             continue;
         }
 
         // FIXME: use triangles[i].furthest_point instead.
         let pt_id = indexed_support_point_id(
-            &triangles[i].normal,
+            triangles[i].normal,
             &normalized_points[..],
             triangles[i].visible_points[..].iter().copied(),
         );
@@ -62,8 +61,7 @@ pub fn try_convex_hull(
             removed_facets.clear();
             removed_facets.push(i);
 
-            for j in 0usize..3 {
-                // println!(">> loop;");
+            for j in 0..3 {
                 compute_silhouette(
                     triangles[i].adj[j],
                     triangles[i].indirect_adj_id[j],
@@ -84,15 +82,6 @@ pub fn try_convex_hull(
                 &mut removed_facets,
                 &mut triangles[..],
             )?;
-
-            // Check that the silhouette is valid.
-            // FIXME: remove this debug code.
-            // {
-            //     for (facet, id) in &silhouette_loop_facets_and_idx {
-            //         assert!(triangles[*facet].valid);
-            //         assert!(!triangles[triangles[*facet].adj[*id]].valid);
-            //     }
-            // }
 
             if silhouette_loop_facets_and_idx.is_empty() {
                 // Due to inaccuracies, the silhouette could not be computed
@@ -132,7 +121,7 @@ pub fn try_convex_hull(
             // }
         }
 
-        i = i + 1;
+        i += 1;
     }
 
     let mut idx = Vec::new();
@@ -159,7 +148,7 @@ fn compute_silhouette(
     indirect_id: usize,
     point: usize,
     out_facets_and_idx: &mut Vec<(usize, usize)>,
-    points: &[Point3<Real>],
+    points: &[Vector3],
     removed_facets: &mut Vec<usize>,
     triangles: &mut [TriangleFacet],
 ) {
@@ -203,7 +192,7 @@ fn compute_silhouette(
 }
 
 fn fix_silhouette_topology(
-    points: &[Point3<Real>],
+    points: &[Vector3],
     out_facets_and_idx: &mut Vec<(usize, usize)>,
     removed_facets: &mut Vec<usize>,
     triangles: &mut [TriangleFacet],
@@ -234,7 +223,7 @@ fn fix_silhouette_topology(
             let p1 = points[triangles[*facet].second_point_from_edge(*adj_id)];
             let p2 = points[triangles[*facet].first_point_from_edge(*adj_id)];
             let supp = indexed_support_point_nth(
-                &(p2 - p1),
+                p2 - p1,
                 points,
                 out_facets_and_idx
                     .iter()
@@ -291,8 +280,6 @@ fn fix_silhouette_topology(
             //     }
             // }
         }
-
-        // println!("");
     }
 
     Ok(())
@@ -301,7 +288,7 @@ fn fix_silhouette_topology(
 fn attach_and_push_facets(
     silhouette_loop_facets_and_idx: &[(usize, usize)],
     point: usize,
-    points: &[Point3<Real>],
+    points: &[Vector3],
     triangles: &mut Vec<TriangleFacet>,
     removed_facets: &[usize],
     undecidable: &mut Vec<usize>,
@@ -331,17 +318,14 @@ fn attach_and_push_facets(
         );
         new_facets.push(facet);
     }
-    // println!("");
 
     // Link the facets together.
     for i in 0..silhouette_loop_facets_and_idx.len() {
-        let prev_facet;
-
-        if i == 0 {
-            prev_facet = triangles.len() + silhouette_loop_facets_and_idx.len() - 1;
+        let prev_facet = if i == 0 {
+            triangles.len() + silhouette_loop_facets_and_idx.len() - 1
         } else {
-            prev_facet = triangles.len() + i - 1;
-        }
+            triangles.len() + i - 1
+        };
 
         let (middle_facet, middle_id) = silhouette_loop_facets_and_idx[i];
         let next_facet = triangles.len() + (i + 1) % silhouette_loop_facets_and_idx.len();
@@ -374,10 +358,10 @@ fn attach_and_push_facets(
                 }
             }
 
-            if furthest != usize::max_value() {
-                if new_facets[furthest].can_see_point(*visible_point, points) {
-                    new_facets[furthest].add_visible_point(*visible_point, points);
-                }
+            if furthest != usize::max_value()
+                && new_facets[furthest].can_see_point(*visible_point, points)
+            {
+                new_facets[furthest].add_visible_point(*visible_point, points);
             }
 
             // If none of the facet can be seen from the point, it is implicitly
@@ -408,7 +392,7 @@ fn attach_and_push_facets(
             new_facets[furthest].add_visible_point(undecidable_point, points);
             let _ = undecidable.swap_remove(i);
         } else {
-            i = i + 1;
+            i += 1;
         }
     }
 
@@ -420,21 +404,19 @@ fn attach_and_push_facets(
 #[cfg(test)]
 mod test {
     use crate::transformation;
-    #[cfg(feature = "dim2")]
-    use na::Point2;
 
     #[cfg(feature = "dim2")]
     #[test]
     fn test_simple_convex_hull() {
         let points = [
-            Point2::new(4.723881f32, 3.597233),
-            Point2::new(3.333363, 3.429991),
-            Point2::new(3.137215, 2.812263),
+            Vector2::new(4.723881f32, 3.597233),
+            Vector2::new(3.333363, 3.429991),
+            Vector2::new(3.137215, 2.812263),
         ];
 
         let chull = transformation::convex_hull(points.as_slice());
 
-        assert!(chull.coords.len() == 3);
+        assert!(chull.len() == 3);
     }
 
     #[cfg(feature = "dim3")]

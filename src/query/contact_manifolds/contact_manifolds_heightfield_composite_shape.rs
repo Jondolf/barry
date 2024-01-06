@@ -67,8 +67,8 @@ fn ensure_workspace_exists(workspace: &mut Option<ContactManifoldsWorkspace>) {
 /// Computes the contact manifold between an heightfield and a composite shape.
 pub fn contact_manifolds_heightfield_composite_shape<ManifoldData, ContactData>(
     dispatcher: &dyn PersistentQueryDispatcher<ManifoldData, ContactData>,
-    pos12: &Isometry<Real>,
-    pos21: &Isometry<Real>,
+    pos12: Isometry,
+    pos21: Isometry,
     heightfield1: &HeightField,
     composite2: &dyn SimdCompositeShape,
     prediction: Real,
@@ -122,11 +122,11 @@ pub fn contact_manifolds_heightfield_composite_shape<ManifoldData, ContactData>(
                         if flipped {
                             manifold.subshape1 = *leaf2;
                             manifold.subshape2 = leaf1 as u32;
-                            manifold.subshape_pos1 = part_pos2.copied();
+                            manifold.subshape_pos1 = part_pos2;
                         } else {
                             manifold.subshape1 = leaf1 as u32;
                             manifold.subshape2 = *leaf2;
-                            manifold.subshape_pos2 = part_pos2.copied();
+                            manifold.subshape_pos2 = part_pos2;
                         };
 
                         manifolds.push(manifold);
@@ -138,7 +138,7 @@ pub fn contact_manifolds_heightfield_composite_shape<ManifoldData, ContactData>(
 
                 if flipped {
                     let _ = dispatcher.contact_manifold_convex_convex(
-                        &part_pos2.inv_mul(pos21),
+                        part_pos2.inv_mul(pos21),
                         part_shape2,
                         &sub_shape1,
                         prediction,
@@ -146,7 +146,7 @@ pub fn contact_manifolds_heightfield_composite_shape<ManifoldData, ContactData>(
                     );
                 } else {
                     let _ = dispatcher.contact_manifold_convex_convex(
-                        &part_pos2.prepend_to(pos12),
+                        part_pos2.prepend_to(pos12),
                         &sub_shape1,
                         part_shape2,
                         prediction,

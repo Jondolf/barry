@@ -1,6 +1,6 @@
 //! Traits and structure needed to cast rays.
 
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{Isometry, Real, Vector};
 use crate::shape::FeatureId;
 
 #[cfg(feature = "rkyv")]
@@ -18,35 +18,35 @@ use rkyv::{bytecheck, CheckBytes};
 #[repr(C)]
 pub struct Ray {
     /// Starting point of the ray.
-    pub origin: Point<Real>,
+    pub origin: Vector,
     /// Direction of the ray.
-    pub dir: Vector<Real>,
+    pub dir: Vector,
 }
 
 impl Ray {
     /// Creates a new ray starting from `origin` and with the direction `dir`.
-    pub fn new(origin: Point<Real>, dir: Vector<Real>) -> Ray {
+    pub fn new(origin: Vector, dir: Vector) -> Ray {
         Ray { origin, dir }
     }
 
     /// Transforms this ray by the given isometry.
     #[inline]
-    pub fn transform_by(&self, m: &Isometry<Real>) -> Self {
+    pub fn transform_by(&self, m: Isometry) -> Self {
         Self::new(m * self.origin, m * self.dir)
     }
 
     /// Transforms this ray by the inverse of the given isometry.
     #[inline]
-    pub fn inverse_transform_by(&self, m: &Isometry<Real>) -> Self {
+    pub fn inverse_transform_by(&self, m: Isometry) -> Self {
         Self::new(
-            m.inverse_transform_point(&self.origin),
-            m.inverse_transform_vector(&self.dir),
+            m.inverse_transform_point(self.origin),
+            m.rotation.inverse() * self.dir,
         )
     }
 
     /// Translates this ray by the given vector. Its direction is left unchanged.
     #[inline]
-    pub fn translate_by(&self, v: Vector<Real>) -> Self {
+    pub fn translate_by(&self, v: Vector) -> Self {
         Self::new(self.origin + v, self.dir)
     }
 
@@ -54,7 +54,7 @@ impl Ray {
     ///
     /// This computes `self.origin + self.dir * t`.
     #[inline]
-    pub fn point_at(&self, t: Real) -> Point<Real> {
+    pub fn point_at(&self, t: Real) -> Vector {
         self.origin + self.dir * t
     }
 }
@@ -76,8 +76,8 @@ pub struct RayIntersection {
     /// The normal at the intersection point.
     ///
     /// If the `toi` is exactly zero, the normal might not be reliable.
-    // XXX: use a Unit<Vector> instead.
-    pub normal: Vector<Real>,
+    // XXX: use a UnitVector instead.
+    pub normal: Vector,
 
     /// Feature at the intersection point.
     pub feature: FeatureId,
@@ -87,7 +87,7 @@ impl RayIntersection {
     #[inline]
     /// Creates a new `RayIntersection`.
     #[cfg(feature = "dim3")]
-    pub fn new(toi: Real, normal: Vector<Real>, feature: FeatureId) -> RayIntersection {
+    pub fn new(toi: Real, normal: Vector, feature: FeatureId) -> RayIntersection {
         RayIntersection {
             toi,
             normal,
@@ -98,7 +98,7 @@ impl RayIntersection {
     #[inline]
     /// Creates a new `RayIntersection`.
     #[cfg(feature = "dim2")]
-    pub fn new(toi: Real, normal: Vector<Real>, feature: FeatureId) -> RayIntersection {
+    pub fn new(toi: Real, normal: Vector, feature: FeatureId) -> RayIntersection {
         RayIntersection {
             toi,
             normal,
@@ -107,7 +107,7 @@ impl RayIntersection {
     }
 
     #[inline]
-    pub fn transform_by(&self, transform: &Isometry<Real>) -> Self {
+    pub fn transform_by(&self, transform: Isometry) -> Self {
         RayIntersection {
             toi: self.toi,
             normal: transform * self.normal,
@@ -139,7 +139,7 @@ pub trait RayCast {
     }
 
     /// Computes the time of impact between this transform shape and a ray.
-    fn cast_ray(&self, m: &Isometry<Real>, ray: &Ray, max_toi: Real, solid: bool) -> Option<Real> {
+    fn cast_ray(&self, m: Isometry, ray: &Ray, max_toi: Real, solid: bool) -> Option<Real> {
         let ls_ray = ray.inverse_transform_by(m);
         self.cast_local_ray(&ls_ray, max_toi, solid)
     }
@@ -147,7 +147,7 @@ pub trait RayCast {
     /// Computes the time of impact, and normal between this transformed shape and a ray.
     fn cast_ray_and_get_normal(
         &self,
-        m: &Isometry<Real>,
+        m: Isometry,
         ray: &Ray,
         max_toi: Real,
         solid: bool,
@@ -159,7 +159,7 @@ pub trait RayCast {
 
     /// Tests whether a ray intersects this transformed shape.
     #[inline]
-    fn intersects_ray(&self, m: &Isometry<Real>, ray: &Ray, max_toi: Real) -> bool {
+    fn intersects_ray(&self, m: Isometry, ray: &Ray, max_toi: Real) -> bool {
         let ls_ray = ray.inverse_transform_by(m);
         self.intersects_local_ray(&ls_ray, max_toi)
     }

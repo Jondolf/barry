@@ -1,6 +1,4 @@
 use core::ops::IndexMut;
-#[cfg(feature = "std")]
-use na::{DMatrix, DVector, Scalar};
 
 /// Abstraction over a 1D array.
 pub trait Array1<T>: IndexMut<usize, Output = T> {
@@ -33,14 +31,6 @@ impl<T> Array1<T> for Vec<T> {
     }
 }
 
-#[cfg(feature = "std")]
-impl<T> Array1<T> for DVector<T> {
-    #[inline]
-    fn len(&self) -> usize {
-        self.len()
-    }
-}
-
 /// Abstraction over a 2D array.
 pub trait Array2 {
     /// The type of heights.
@@ -56,7 +46,7 @@ pub trait Array2 {
 }
 
 #[cfg(feature = "std")]
-impl<T: Scalar> Array2 for DMatrix<T> {
+impl<T: Sized + Clone + Copy> Array2 for Vec<Vec<T>> {
     type Item = T;
 
     #[inline]
@@ -71,12 +61,12 @@ impl<T: Scalar> Array2 for DMatrix<T> {
 
     #[inline]
     fn get(&self, i: usize, j: usize) -> Self::Item {
-        self[(i, j)].clone()
+        self[i][j].clone()
     }
 
     #[inline]
     fn set(&mut self, i: usize, j: usize, val: Self::Item) {
-        self[(i, j)] = val
+        self[i][j] = val
     }
 }
 

@@ -1,10 +1,8 @@
-use crate::math::Real;
-use crate::shape::ConvexPolyhedron;
-use na::Point3;
+use crate::{math::Vector3, shape::ConvexPolyhedron};
 
 impl ConvexPolyhedron {
     /// Discretize the boundary of this convex polyhedron as a triangle-mesh.
-    pub fn to_trimesh(&self) -> (Vec<Point3<Real>>, Vec<[u32; 3]>) {
+    pub fn to_trimesh(&self) -> (Vec<Vector3>, Vec<[u32; 3]>) {
         let mut indices = Vec::new();
 
         for face in self.faces() {

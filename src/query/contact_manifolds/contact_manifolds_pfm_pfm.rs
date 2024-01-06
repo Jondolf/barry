@@ -1,16 +1,15 @@
-use crate::math::{Isometry, Real};
+use crate::math::{Isometry, Real, UnitVector, Vector};
 use crate::query::{
     self,
     gjk::{GJKResult, VoronoiSimplex},
     ContactManifold, TrackedContact,
 };
 use crate::shape::{PackedFeatureId, PolygonalFeature, PolygonalFeatureMap, Shape};
-use na::Unit;
 
 /// Computes the contact manifold between two convex shapes implementing the `PolygonalSupportMap`
 /// trait, both represented as `Shape` trait-objects.
 pub fn contact_manifold_pfm_pfm_shapes<ManifoldData, ContactData>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     shape1: &dyn Shape,
     shape2: &dyn Shape,
     prediction: Real,
@@ -37,7 +36,7 @@ pub fn contact_manifold_pfm_pfm_shapes<ManifoldData, ContactData>(
 
 /// Computes the contact manifold between two convex shapes implementing the `PolygonalSupportMap` trait.
 pub fn contact_manifold_pfm_pfm<'a, ManifoldData, ContactData, S1, S2>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     pfm1: &'a S1,
     border_radius1: Real,
     pfm2: &'a S2,
@@ -57,7 +56,7 @@ pub fn contact_manifold_pfm_pfm<'a, ManifoldData, ContactData, S1, S2>(
         return;
     }
 
-    let init_dir = Unit::try_new(manifold.local_n1, crate::math::DEFAULT_EPSILON);
+    let init_dir = UnitVector::new(manifold.local_n1).ok();
     let total_prediction = prediction + border_radius1 + border_radius2;
     let contact = query::details::contact_support_map_support_map_with_params(
         pos12,
@@ -74,17 +73,17 @@ pub fn contact_manifold_pfm_pfm<'a, ManifoldData, ContactData, S1, S2>(
     match contact {
         GJKResult::ClosestPoints(p1, p2_1, dir) => {
             let local_n1 = dir;
-            let local_n2 = pos12.inverse_transform_unit_vector(&-dir);
+            let local_n2 = pos12.rotation.inverse() * -dir;
             let mut feature1 = PolygonalFeature::default();
             let mut feature2 = PolygonalFeature::default();
-            pfm1.local_support_feature(&local_n1, &mut feature1);
-            pfm2.local_support_feature(&local_n2, &mut feature2);
+            pfm1.local_support_feature(local_n1, &mut feature1);
+            pfm2.local_support_feature(local_n2, &mut feature2);
 
             PolygonalFeature::contacts(
                 pos12,
-                &pos12.inverse(),
-                &local_n1,
-                &local_n2,
+                pos12.inverse(),
+                *local_n1,
+                *local_n2,
                 &feature1,
                 &feature2,
                 total_prediction,
@@ -100,10 +99,10 @@ pub fn contact_manifold_pfm_pfm<'a, ManifoldData, ContactData, S1, S2>(
             {
                 let contact = TrackedContact::new(
                     p1,
-                    pos12.inverse_transform_point(&p2_1),
+                    pos12.inverse_transform_point(p2_1),
                     PackedFeatureId::UNKNOWN, // TODO: We don't know what features are involved.
                     PackedFeatureId::UNKNOWN,
-                    (p2_1 - p1).dot(&dir),
+                    (p2_1 - p1).dot(*dir),
                 );
                 manifold.points.push(contact);
             }
@@ -126,7 +125,7 @@ pub fn contact_manifold_pfm_pfm<'a, ManifoldData, ContactData, S1, S2>(
         }
         _ => {
             // Reset the cached direction.
-            manifold.local_n1.fill(0.0);
+            manifold.local_n1 = Vector::ZERO;
         }
     }
 

@@ -17,7 +17,7 @@
 // > THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::bounding_volume::Aabb;
-use crate::math::{Point, Real, Vector, DIM};
+use crate::math::{Real, UVector, Vector, DIM};
 use crate::query;
 use crate::transformation::voxelization::{Voxel, VoxelSet};
 use std::sync::Arc;
@@ -107,7 +107,7 @@ struct VoxelData {
 
 /// A cubic volume filled with voxels.
 pub struct VoxelizedVolume {
-    origin: Point<Real>,
+    origin: Vector,
     scale: Real,
     resolution: [u32; DIM],
     values: Vec<VoxelValue>,
@@ -130,7 +130,7 @@ impl VoxelizedVolume {
     /// * `keep_voxel_to_primitives_map` - If set to `true` a map between the voxels
     ///   and the primitives (3D triangles or 2D segments) it intersects will be computed.
     pub fn voxelize(
-        points: &[Point<Real>],
+        points: &[Vector],
         indices: &[[u32; DIM]],
         resolution: u32,
         fill_mode: FillMode,
@@ -138,7 +138,7 @@ impl VoxelizedVolume {
     ) -> Self {
         let mut result = VoxelizedVolume {
             resolution: [0; DIM],
-            origin: Point::origin(),
+            origin: Vector::ZERO,
             scale: 1.0,
             values: Vec::new(),
             data: Vec::new(),
@@ -188,10 +188,10 @@ impl VoxelizedVolume {
         let inv_scale = (resolution as Real - 1.0) / r;
         result.allocate();
 
-        let mut tri_pts = [Point::origin(); DIM];
-        let box_half_size = Vector::repeat(0.5);
-        let mut ijk0 = Vector::repeat(0u32);
-        let mut ijk1 = Vector::repeat(0u32);
+        let mut tri_pts = [Vector::ZERO; DIM];
+        let box_half_size = Vector::splat(0.5);
+        let mut ijk0 = UVector::splat(0);
+        let mut ijk1 = UVector::splat(0);
 
         let detect_self_intersections = fill_mode.detect_self_intersections();
         #[cfg(feature = "dim2")]
@@ -202,7 +202,7 @@ impl VoxelizedVolume {
             // Find the range of voxels potentially intersecting the triangle.
             for c in 0..DIM {
                 let pt = points[tri[c] as usize];
-                tri_pts[c] = (pt - result.origin.coords) * inv_scale;
+                tri_pts[c] = (pt - result.origin) * inv_scale;
 
                 let i = (tri_pts[c].x + 0.5) as u32;
                 let j = (tri_pts[c].y + 0.5) as u32;
@@ -214,23 +214,21 @@ impl VoxelizedVolume {
                 assert!(k < result.resolution[2]);
 
                 #[cfg(feature = "dim2")]
-                let ijk = Vector::new(i, j);
+                let ijk = UVector::new(i, j);
                 #[cfg(feature = "dim3")]
-                let ijk = Vector::new(i, j, k);
+                let ijk = UVector::new(i, j, k);
 
                 if c == 0 {
                     ijk0 = ijk;
                     ijk1 = ijk;
                 } else {
-                    ijk0 = ijk0.inf(&ijk);
-                    ijk1 = ijk1.sup(&ijk);
+                    ijk0 = ijk0.min(ijk);
+                    ijk1 = ijk1.max(ijk);
                 }
             }
 
-            ijk0.apply(|e| *e = e.saturating_sub(1));
-            ijk1 = ijk1
-                .map(|e| e + 1)
-                .inf(&Point::from(result.resolution).coords);
+            ijk0 = ijk0.saturating_sub(UVector::ONE);
+            ijk1 = (ijk1 + UVector::ONE).min(UVector::from(result.resolution));
 
             #[cfg(feature = "dim2")]
             let range_k = 0..1;
@@ -242,9 +240,9 @@ impl VoxelizedVolume {
                 for j in ijk0.y..ijk1.y {
                     for k in range_k.clone() {
                         #[cfg(feature = "dim2")]
-                        let pt = Point::new(i as Real, j as Real);
+                        let pt = Vector::new(i as Real, j as Real);
                         #[cfg(feature = "dim3")]
-                        let pt = Point::new(i as Real, j as Real, k as Real);
+                        let pt = Vector::new(i as Real, j as Real, k as Real);
 
                         let id = result.voxel_index(i, j, k);
                         let value = &mut result.values[id as usize];
@@ -274,39 +272,34 @@ impl VoxelizedVolume {
 
                                         *value = VoxelValue::PrimitiveOnSurface;
                                     }
-                                } else {
-                                    if let Some(params) = aabb.clip_line_parameters(
-                                        &tri_pts[0],
-                                        &(tri_pts[1] - tri_pts[0]),
-                                    ) {
-                                        let eps = 0.0; // -1.0e-6;
+                                } else if let Some(params) =
+                                    aabb.clip_line_parameters(tri_pts[0], tri_pts[1] - tri_pts[0])
+                                {
+                                    let eps = 0.0; // -1.0e-6;
 
-                                        assert!(params.0 <= params.1);
-                                        if params.0 > 1.0 + eps || params.1 < 0.0 - eps {
-                                            continue;
-                                        }
+                                    assert!(params.0 <= params.1);
+                                    if params.0 > 1.0 + eps || params.1 < 0.0 - eps {
+                                        continue;
+                                    }
 
-                                        data.multiplicity += ((params.0 >= -eps && params.0 <= eps)
-                                            || (params.0 >= 1.0 - eps && params.0 <= 1.0 + eps))
-                                            as u32;
-                                        data.multiplicity += ((params.1 >= -eps && params.1 <= eps)
-                                            || (params.1 >= 1.0 - eps && params.1 <= 1.0 + eps))
-                                            as u32;
-                                        data.multiplicity += (params.0 > eps) as u32 * 2;
-                                        data.multiplicity += (params.1 < 1.0 - eps) as u32 * 2;
+                                    data.multiplicity += ((params.0 >= -eps && params.0 <= eps)
+                                        || (params.0 >= 1.0 - eps && params.0 <= 1.0 + eps))
+                                        as u32;
+                                    data.multiplicity += ((params.1 >= -eps && params.1 <= eps)
+                                        || (params.1 >= 1.0 - eps && params.1 <= 1.0 + eps))
+                                        as u32;
+                                    data.multiplicity += (params.0 > eps) as u32 * 2;
+                                    data.multiplicity += (params.1 < 1.0 - eps) as u32 * 2;
 
-                                        if keep_voxel_to_primitives_map {
-                                            data.num_primitive_intersections += 1;
-                                            result
-                                                .primitive_intersections
-                                                .push((id, tri_id as u32));
-                                        }
+                                    if keep_voxel_to_primitives_map {
+                                        data.num_primitive_intersections += 1;
+                                        result.primitive_intersections.push((id, tri_id as u32));
+                                    }
 
-                                        if data.multiplicity > 4 && lock_high_multiplicities {
-                                            *value = VoxelValue::PrimitiveOnSurfaceNoWalk;
-                                        } else {
-                                            *value = VoxelValue::PrimitiveOnSurface;
-                                        }
+                                    if data.multiplicity > 4 && lock_high_multiplicities {
+                                        *value = VoxelValue::PrimitiveOnSurfaceNoWalk;
+                                    } else {
+                                        *value = VoxelValue::PrimitiveOnSurface;
                                     }
                                 }
                             };
@@ -749,7 +742,7 @@ impl VoxelizedVolume {
     /// This conversion is extremely naive: it will simply collect all the 12 triangles forming
     /// the faces of each voxel. No actual boundary extraction is done.
     #[cfg(feature = "dim3")]
-    pub fn to_trimesh(&self, value: VoxelValue) -> (Vec<Point<Real>>, Vec<[u32; DIM]>) {
+    pub fn to_trimesh(&self, value: VoxelValue) -> (Vec<Vector>, Vec<[u32; DIM]>) {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
@@ -772,7 +765,7 @@ impl VoxelizedVolume {
                             Vector::new(-0.5, 0.5, 0.5),
                         ];
 
-                        for shift in &shifts {
+                        for shift in shifts {
                             vertices.push(self.origin + (ijk + shift) * self.scale);
                         }
 
@@ -817,9 +810,9 @@ impl Into<VoxelSet> for VoxelizedVolume {
                     let id = self.voxel_index(i, j, k) as usize;
                     let value = self.values[id];
                     #[cfg(feature = "dim2")]
-                    let coords = Point::new(i, j);
+                    let coords = UVector::new(i, j);
                     #[cfg(feature = "dim3")]
-                    let coords = Point::new(i, j, k);
+                    let coords = UVector::new(i, j, k);
 
                     if value == VoxelValue::PrimitiveInsideSurface {
                         let voxel = Voxel {
@@ -879,7 +872,7 @@ impl Into<VoxelSet> for VoxelizedVolume {
 fn traceRay(
     mesh: &RaycastMesh,
     start: Real,
-    dir: &Vector<Real>,
+    dir: Vector,
     inside_count: &mut u32,
     outside_count: &mut u32,
 ) {
@@ -929,12 +922,12 @@ for i in 0..i0 {
                 let mut outside_count = 0;
 
                 let directions = [
-                    Vector::x(),
-                    -Vector::x(),
-                    Vector::y(),
-                    -Vector::y(),
-                    Vector::z(),
-                    -Vector::z(),
+                    Vector::X,
+                    -Vector::X,
+                    Vector::Y,
+                    -Vector::Y,
+                    Vector::Z,
+                    -Vector::Z,
                 ];
 
                 for r in 0..6 {

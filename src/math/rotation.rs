@@ -210,6 +210,10 @@ impl Rotation3 {
     pub fn inverse(self) -> Self {
         Self(self.0.inverse())
     }
+
+    pub fn is_finite(self) -> bool {
+        self.0.is_finite()
+    }
 }
 
 impl From<Rotation3> for Matrix3 {

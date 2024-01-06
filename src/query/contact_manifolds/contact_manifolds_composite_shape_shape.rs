@@ -58,7 +58,7 @@ fn ensure_workspace_exists(workspace: &mut Option<ContactManifoldsWorkspace>) {
 /// Computes the contact manifolds between a composite shape and an abstract shape.
 pub fn contact_manifolds_composite_shape_shape<ManifoldData, ContactData>(
     dispatcher: &dyn PersistentQueryDispatcher<ManifoldData, ContactData>,
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     composite1: &dyn SimdCompositeShape,
     shape2: &dyn Shape,
     prediction: Real,
@@ -79,11 +79,10 @@ pub fn contact_manifolds_composite_shape_shape<ManifoldData, ContactData>(
      * Compute interferences.
      */
 
-    let pos12 = *pos12;
     let pos21 = pos12.inverse();
 
     // Traverse qbvh1 first.
-    let ls_aabb2_1 = shape2.compute_aabb(&pos12).loosened(prediction);
+    let ls_aabb2_1 = shape2.compute_aabb(pos12).loosened(prediction);
     let mut old_manifolds = std::mem::take(manifolds);
 
     let mut leaf1_fn = |leaf1: &u32| {
@@ -108,11 +107,11 @@ pub fn contact_manifolds_composite_shape_shape<ManifoldData, ContactData>(
                     if flipped {
                         manifold.subshape1 = 0;
                         manifold.subshape2 = *leaf1;
-                        manifold.subshape_pos2 = part_pos1.copied();
+                        manifold.subshape_pos2 = part_pos1;
                     } else {
                         manifold.subshape1 = *leaf1;
                         manifold.subshape2 = 0;
-                        manifold.subshape_pos1 = part_pos1.copied();
+                        manifold.subshape_pos1 = part_pos1;
                     };
 
                     manifolds.push(manifold);
@@ -124,7 +123,7 @@ pub fn contact_manifolds_composite_shape_shape<ManifoldData, ContactData>(
 
             if flipped {
                 let _ = dispatcher.contact_manifold_convex_convex(
-                    &part_pos1.prepend_to(&pos21),
+                    part_pos1.prepend_to(pos21),
                     shape2,
                     part_shape1,
                     prediction,
@@ -132,7 +131,7 @@ pub fn contact_manifolds_composite_shape_shape<ManifoldData, ContactData>(
                 );
             } else {
                 let _ = dispatcher.contact_manifold_convex_convex(
-                    &part_pos1.inv_mul(&pos12),
+                    part_pos1.inv_mul(pos12),
                     part_shape1,
                     shape2,
                     prediction,

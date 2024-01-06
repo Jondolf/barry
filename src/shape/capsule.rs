@@ -1,6 +1,5 @@
-use crate::math::{Isometry, Point, Real, Rotation, Vector};
+use crate::math::{Isometry, Real, Rotation, UnitVector, Vector};
 use crate::shape::{Segment, SupportMap};
-use na::Unit;
 
 #[cfg(feature = "std")]
 use either::Either;
@@ -29,32 +28,32 @@ pub struct Capsule {
 impl Capsule {
     /// Creates a new capsule aligned with the `x` axis and with the given half-height an radius.
     pub fn new_x(half_height: Real, radius: Real) -> Self {
-        let b = Point::from(Vector::x() * half_height);
+        let b = Vector::X * half_height;
         Self::new(-b, b, radius)
     }
 
     /// Creates a new capsule aligned with the `y` axis and with the given half-height an radius.
     pub fn new_y(half_height: Real, radius: Real) -> Self {
-        let b = Point::from(Vector::y() * half_height);
+        let b = Vector::Y * half_height;
         Self::new(-b, b, radius)
     }
 
     /// Creates a new capsule aligned with the `z` axis and with the given half-height an radius.
     #[cfg(feature = "dim3")]
     pub fn new_z(half_height: Real, radius: Real) -> Self {
-        let b = Point::from(Vector::z() * half_height);
+        let b = Vector::Z * half_height;
         Self::new(-b, b, radius)
     }
 
     /// Creates a new capsule defined as the segment between `a` and `b` and with the given `radius`.
-    pub fn new(a: Point<Real>, b: Point<Real>, radius: Real) -> Self {
+    pub fn new(a: Vector, b: Vector, radius: Real) -> Self {
         let segment = Segment::new(a, b);
         Self { segment, radius }
     }
 
     /// The height of this capsule.
     pub fn height(&self) -> Real {
-        (self.segment.b - self.segment.a).norm()
+        (self.segment.b - self.segment.a).length()
     }
 
     /// The half-height of this capsule.
@@ -63,45 +62,46 @@ impl Capsule {
     }
 
     /// The center of this capsule.
-    pub fn center(&self) -> Point<Real> {
-        na::center(&self.segment.a, &self.segment.b)
+    pub fn center(&self) -> Vector {
+        (self.segment.a + self.segment.b) / 2.0
     }
 
     /// Creates a new capsule equal to `self` with all its endpoints transformed by `pos`.
-    pub fn transform_by(&self, pos: &Isometry<Real>) -> Self {
+    pub fn transform_by(&self, pos: Isometry) -> Self {
         Self::new(pos * self.segment.a, pos * self.segment.b, self.radius)
     }
 
     /// The transformation such that `t * Y` is collinear with `b - a` and `t * origin` equals
     /// the capsule's center.
-    pub fn canonical_transform(&self) -> Isometry<Real> {
-        let tra = self.center().coords;
-        let rot = self.rotation_wrt_y();
-        Isometry::from_parts(tra.into(), rot)
+    #[doc(alias = "transform_wrt_y")]
+    pub fn canonical_transform(&self) -> Isometry {
+        Isometry {
+            translation: self.center(),
+            rotation: self.rotation_wrt_y(),
+        }
     }
 
     /// The rotation `r` such that `r * Y` is collinear with `b - a`.
-    pub fn rotation_wrt_y(&self) -> Rotation<Real> {
+    pub fn rotation_wrt_y(&self) -> Rotation {
         let mut dir = self.segment.b - self.segment.a;
+
+        if dir == Vector::ZERO {
+            return Rotation::IDENTITY;
+        }
+
         if dir.y < 0.0 {
             dir = -dir;
         }
 
         #[cfg(feature = "dim2")]
         {
-            Rotation::rotation_between(&Vector::y(), &dir)
+            Rotation::from_rotation_arc_colinear(Vector::Y, dir)
         }
 
         #[cfg(feature = "dim3")]
         {
-            Rotation::rotation_between(&Vector::y(), &dir).unwrap_or(Rotation::identity())
+            Rotation::from_rotation_arc_colinear(Vector::Y, dir).unwrap_or(Rotation::IDENTITY)
         }
-    }
-
-    /// The transform `t` such that `t * Y` is collinear with `b - a` and such that `t * origin = (b + a) / 2.0`.
-    pub fn transform_wrt_y(&self) -> Isometry<Real> {
-        let rot = self.rotation_wrt_y();
-        Isometry::from_parts(self.center().coords.into(), rot)
     }
 
     /// Computes a scaled version of this capsule.
@@ -113,14 +113,13 @@ impl Capsule {
     #[cfg(all(feature = "dim2", feature = "std"))]
     pub fn scaled(
         self,
-        scale: &Vector<Real>,
+        scale: Vector,
         nsubdivs: u32,
     ) -> Option<Either<Self, super::ConvexPolygon>> {
         if scale.x != scale.y {
             // The scaled shape is not a capsule.
             let mut vtx = self.to_polyline(nsubdivs);
-            vtx.iter_mut()
-                .for_each(|pt| pt.coords = pt.coords.component_mul(scale));
+            vtx.iter_mut().for_each(|pt| *pt = *pt * scale);
             Some(Either::Right(super::ConvexPolygon::from_convex_polyline(
                 vtx,
             )?))
@@ -143,14 +142,13 @@ impl Capsule {
     #[cfg(all(feature = "dim3", feature = "std"))]
     pub fn scaled(
         self,
-        scale: &Vector<Real>,
+        scale: Vector,
         nsubdivs: u32,
     ) -> Option<Either<Self, super::ConvexPolyhedron>> {
         if scale.x != scale.y || scale.x != scale.z || scale.y != scale.z {
             // The scaled shape is not a capsule.
             let (mut vtx, idx) = self.to_trimesh(nsubdivs, nsubdivs);
-            vtx.iter_mut()
-                .for_each(|pt| pt.coords = pt.coords.component_mul(scale));
+            vtx.iter_mut().for_each(|pt| *pt = *pt * scale);
             Some(Either::Right(super::ConvexPolyhedron::from_convex_mesh(
                 vtx, &idx,
             )?))
@@ -166,16 +164,16 @@ impl Capsule {
 }
 
 impl SupportMap for Capsule {
-    fn local_support_point(&self, dir: &Vector<Real>) -> Point<Real> {
-        let dir = Unit::try_new(*dir, 0.0).unwrap_or(Vector::y_axis());
-        self.local_support_point_toward(&dir)
+    fn local_support_point(&self, dir: Vector) -> Vector {
+        let dir = UnitVector::new(dir).unwrap_or(UnitVector::Y);
+        self.local_support_point_toward(dir)
     }
 
-    fn local_support_point_toward(&self, dir: &Unit<Vector<Real>>) -> Point<Real> {
-        if dir.dot(&self.segment.a.coords) > dir.dot(&self.segment.b.coords) {
-            self.segment.a + **dir * self.radius
+    fn local_support_point_toward(&self, dir: UnitVector) -> Vector {
+        if dir.dot(self.segment.a) > dir.dot(self.segment.b) {
+            self.segment.a + *dir * self.radius
         } else {
-            self.segment.b + **dir * self.radius
+            self.segment.b + *dir * self.radius
         }
     }
 }

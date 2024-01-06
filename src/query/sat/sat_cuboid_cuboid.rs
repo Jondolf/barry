@@ -1,23 +1,21 @@
-use crate::math::{Isometry, Real, Vector, DIM};
+use crate::math::{AnyVector, Isometry, Real, Vector, DIM};
 use crate::shape::{Cuboid, SupportMap};
-#[cfg(not(feature = "std"))]
-use na::RealField; // For .copysign()
 
 /// Computes the separation of two cuboids along `axis1`.
 #[cfg(feature = "dim3")]
 pub fn cuboid_cuboid_compute_separation_wrt_local_line(
     cuboid1: &Cuboid,
     cuboid2: &Cuboid,
-    pos12: &Isometry<Real>,
-    axis1: &Vector<Real>,
-) -> (Real, Vector<Real>) {
-    let signum = (1.0 as Real).copysign(pos12.translation.vector.dot(axis1));
+    pos12: Isometry,
+    axis1: Vector,
+) -> (Real, Vector) {
+    let signum = (1.0 as Real).copysign(pos12.translation.dot(axis1));
     let axis1 = axis1 * signum;
-    let axis2 = pos12.inverse_transform_vector(&-axis1);
-    let local_pt1 = cuboid1.local_support_point(&axis1);
-    let local_pt2 = cuboid2.local_support_point(&axis2);
+    let axis2 = pos12.rotation.inverse() * -axis1;
+    let local_pt1 = cuboid1.local_support_point(axis1);
+    let local_pt2 = cuboid2.local_support_point(axis2);
     let pt2 = pos12 * local_pt2;
-    let separation = (pt2 - local_pt1).dot(&axis1);
+    let separation = (pt2 - local_pt1).dot(axis1);
     (separation, axis1)
 }
 
@@ -29,15 +27,15 @@ pub fn cuboid_cuboid_compute_separation_wrt_local_line(
 pub fn cuboid_cuboid_find_local_separating_edge_twoway(
     cuboid1: &Cuboid,
     cuboid2: &Cuboid,
-    pos12: &Isometry<Real>,
-) -> (Real, Vector<Real>) {
+    pos12: Isometry,
+) -> (Real, Vector) {
     use approx::AbsDiffEq;
     let mut best_separation = -Real::MAX;
-    let mut best_dir = Vector::zeros();
+    let mut best_dir = Vector::ZERO;
 
-    let x2 = pos12 * Vector::x();
-    let y2 = pos12 * Vector::y();
-    let z2 = pos12 * Vector::z();
+    let x2 = pos12 * Vector::X;
+    let y2 = pos12 * Vector::Y;
+    let z2 = pos12 * Vector::Z;
 
     // We have 3 * 3 = 9 axes to test.
     let axes = [
@@ -55,14 +53,14 @@ pub fn cuboid_cuboid_find_local_separating_edge_twoway(
         Vector::new(-z2.y, z2.x, 0.0),
     ];
 
-    for axis1 in &axes {
-        let norm1 = axis1.norm();
+    for axis1 in axes {
+        let norm1 = axis1.length();
         if norm1 > Real::default_epsilon() {
             let (separation, axis1) = cuboid_cuboid_compute_separation_wrt_local_line(
                 cuboid1,
                 cuboid2,
                 pos12,
-                &(axis1 / norm1),
+                axis1 / norm1,
             );
 
             if separation > best_separation {
@@ -81,16 +79,16 @@ pub fn cuboid_cuboid_find_local_separating_edge_twoway(
 pub fn cuboid_cuboid_find_local_separating_normal_oneway(
     cuboid1: &Cuboid,
     cuboid2: &Cuboid,
-    pos12: &Isometry<Real>,
-) -> (Real, Vector<Real>) {
+    pos12: Isometry,
+) -> (Real, Vector) {
     let mut best_separation = -Real::MAX;
-    let mut best_dir = Vector::zeros();
+    let mut best_dir = Vector::ZERO;
 
     for i in 0..DIM {
-        let sign = (1.0 as Real).copysign(pos12.translation.vector[i]);
+        let sign = (1.0 as Real).copysign(pos12.translation[i]);
         let axis1 = Vector::ith(i, sign);
-        let axis2 = pos12.inverse_transform_vector(&-axis1);
-        let local_pt2 = cuboid2.local_support_point(&axis2);
+        let axis2 = pos12.rotation.inverse() * -axis1;
+        let local_pt2 = cuboid2.local_support_point(axis2);
         let pt2 = pos12 * local_pt2;
         let separation = pt2[i] * sign - cuboid1.half_extents[i];
 

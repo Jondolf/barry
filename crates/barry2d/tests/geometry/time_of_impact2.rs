@@ -1,5 +1,5 @@
-use na::{self, Isometry2, Point2, Vector2};
-use barry2d::math::Real;
+use barry2d::math::{Isometry2, Vector2};
+use barry2d::math::{Real, Rotation2};
 use barry2d::query;
 use barry2d::shape::{Ball, Cuboid, Polyline, Segment};
 
@@ -8,7 +8,7 @@ fn ball_cuboid_toi() {
     let cuboid = Cuboid::new(Vector2::new(1.0, 1.0));
     let ball = Ball::new(1.0);
 
-    let cuboid_pos = Isometry2::identity();
+    let cuboid_pos = Isometry2::IDENTITY;
     let ball_pos_intersecting = Isometry2::new(Vector2::new(1.0, 1.0), 0.0);
     let ball_pos_will_touch = Isometry2::new(Vector2::new(2.0, 2.0), 0.0);
     let ball_pos_wont_touch = Isometry2::new(Vector2::new(3.0, 3.0), 0.0);
@@ -20,33 +20,33 @@ fn ball_cuboid_toi() {
     let ball_vel2 = Vector2::new(-0.5, -0.5);
 
     let toi_intersecting = query::time_of_impact(
-        &ball_pos_intersecting,
-        &ball_vel1,
+        ball_pos_intersecting,
+        ball_vel1,
         &ball,
-        &cuboid_pos,
-        &cuboid_vel1,
+        cuboid_pos,
+        cuboid_vel1,
         &cuboid,
         Real::MAX,
         true,
     )
     .unwrap();
     let toi_will_touch = query::time_of_impact(
-        &ball_pos_will_touch,
-        &ball_vel2,
+        ball_pos_will_touch,
+        ball_vel2,
         &ball,
-        &cuboid_pos,
-        &cuboid_vel2,
+        cuboid_pos,
+        cuboid_vel2,
         &cuboid,
         Real::MAX,
         true,
     )
     .unwrap();
     let toi_wont_touch = query::time_of_impact(
-        &ball_pos_wont_touch,
-        &ball_vel2,
+        ball_pos_wont_touch,
+        ball_vel2,
         &ball,
-        &cuboid_pos,
-        &cuboid_vel1,
+        cuboid_pos,
+        cuboid_vel1,
         &cuboid,
         Real::MAX,
         true,
@@ -56,7 +56,7 @@ fn ball_cuboid_toi() {
     assert_eq!(toi_intersecting.map(|toi| toi.toi), Some(0.0));
     assert!(relative_eq!(
         toi_will_touch.unwrap().toi,
-        ((2.0 as Real).sqrt() - 1.0) / (ball_vel2 - cuboid_vel2).norm()
+        ((2.0 as Real).sqrt() - 1.0) / (ball_vel2 - cuboid_vel2).length()
     ));
     assert_eq!(toi_wont_touch.map(|toi| toi.toi), None);
 }
@@ -72,44 +72,36 @@ fn cuboid_cuboid_toi_issue_214() {
     let vel1 = Vector2::new(1.0, 0.0);
     let vel2 = Vector2::new(0.0, 0.0);
 
-    let toi = query::time_of_impact(
-        &pos1,
-        &vel1,
-        &shape1,
-        &pos2,
-        &vel2,
-        &shape2,
-        Real::MAX,
-        true,
-    )
-    .unwrap();
+    let toi =
+        query::time_of_impact(pos1, vel1, &shape1, pos2, vel2, &shape2, Real::MAX, true).unwrap();
     assert!(toi.is_some());
 }
 
 #[test]
 fn time_of_impact_should_return_toi_for_ball_and_rotated_polyline() {
-    let ball_isometry = Isometry2::identity();
+    let ball_isometry = Isometry2::IDENTITY;
     let ball_velocity = Vector2::new(1.0, 0.0);
     let ball = Ball::new(0.5);
-    let polyline_isometry = Isometry2::rotation(-std::f32::consts::FRAC_PI_2);
-    let polyline_velocity = Vector2::zeros();
-    let polyline = Polyline::new(vec![Point2::new(1.0, 1.0), Point2::new(-1.0, 1.0)], None);
+    let polyline_isometry =
+        Isometry2::from_rotation(Rotation2::from_radians(-std::f32::consts::FRAC_PI_2));
+    let polyline_velocity = Vector2::ZERO;
+    let polyline = Polyline::new(vec![Vector2::new(1.0, 1.0), Vector2::new(-1.0, 1.0)], None);
 
     assert_eq!(
-        polyline_isometry.transform_point(&Point2::new(1.0, 1.0)),
-        Point2::new(0.99999994, -1.0)
+        polyline_isometry.transform_point(Vector2::new(1.0, 1.0)),
+        Vector2::new(0.99999994, -1.0)
     );
     assert_eq!(
-        polyline_isometry.transform_point(&Point2::new(-1.0, 1.0)),
-        Point2::new(1.0, 0.99999994)
+        polyline_isometry.transform_point(Vector2::new(-1.0, 1.0)),
+        Vector2::new(1.0, 0.99999994)
     );
 
     let toi = query::time_of_impact(
-        &ball_isometry,
-        &ball_velocity,
+        ball_isometry,
+        ball_velocity,
         &ball,
-        &polyline_isometry,
-        &polyline_velocity,
+        polyline_isometry,
+        polyline_velocity,
         &polyline,
         1.0,
         true,
@@ -121,28 +113,29 @@ fn time_of_impact_should_return_toi_for_ball_and_rotated_polyline() {
 
 #[test]
 fn time_of_impact_should_return_toi_for_ball_and_rotated_segment() {
-    let ball_isometry = Isometry2::identity();
+    let ball_isometry = Isometry2::IDENTITY;
     let ball_velocity = Vector2::new(1.0, 0.0);
     let ball = Ball::new(0.5);
-    let segment_isometry = Isometry2::rotation(-std::f32::consts::FRAC_PI_2);
-    let segment_velocity = Vector2::zeros();
-    let segment = Segment::new(Point2::new(1.0, 1.0), Point2::new(-1.0, 1.0));
+    let segment_isometry =
+        Isometry2::from_rotation(Rotation2::from_radians(-std::f32::consts::FRAC_PI_2));
+    let segment_velocity = Vector2::ZERO;
+    let segment = Segment::new(Vector2::new(1.0, 1.0), Vector2::new(-1.0, 1.0));
 
     assert_eq!(
-        segment_isometry.transform_point(&Point2::new(1.0, 1.0)),
-        Point2::new(0.99999994, -1.0)
+        segment_isometry.transform_point(Vector2::new(1.0, 1.0)),
+        Vector2::new(0.99999994, -1.0)
     );
     assert_eq!(
-        segment_isometry.transform_point(&Point2::new(-1.0, 1.0)),
-        Point2::new(1.0, 0.99999994)
+        segment_isometry.transform_point(Vector2::new(-1.0, 1.0)),
+        Vector2::new(1.0, 0.99999994)
     );
 
     let toi = query::time_of_impact(
-        &ball_isometry,
-        &ball_velocity,
+        ball_isometry,
+        ball_velocity,
         &ball,
-        &segment_isometry,
-        &segment_velocity,
+        segment_isometry,
+        segment_velocity,
         &segment,
         1.0,
         true,
@@ -154,28 +147,29 @@ fn time_of_impact_should_return_toi_for_ball_and_rotated_segment() {
 
 #[test]
 fn time_of_impact_should_return_toi_for_rotated_segment_and_ball() {
-    let ball_isometry = Isometry2::identity();
+    let ball_isometry = Isometry2::IDENTITY;
     let ball_velocity = Vector2::new(1.0, 0.0);
     let ball = Ball::new(0.5);
-    let segment_isometry = Isometry2::rotation(-std::f32::consts::FRAC_PI_2);
-    let segment_velocity = Vector2::zeros();
-    let segment = Segment::new(Point2::new(1.0, 1.0), Point2::new(-1.0, 1.0));
+    let segment_isometry =
+        Isometry2::from_rotation(Rotation2::from_radians(-std::f32::consts::FRAC_PI_2));
+    let segment_velocity = Vector2::ZERO;
+    let segment = Segment::new(Vector2::new(1.0, 1.0), Vector2::new(-1.0, 1.0));
 
     assert_eq!(
-        segment_isometry.transform_point(&Point2::new(1.0, 1.0)),
-        Point2::new(0.99999994, -1.0)
+        segment_isometry.transform_point(Vector2::new(1.0, 1.0)),
+        Vector2::new(0.99999994, -1.0)
     );
     assert_eq!(
-        segment_isometry.transform_point(&Point2::new(-1.0, 1.0)),
-        Point2::new(1.0, 0.99999994)
+        segment_isometry.transform_point(Vector2::new(-1.0, 1.0)),
+        Vector2::new(1.0, 0.99999994)
     );
 
     let toi = query::time_of_impact(
-        &segment_isometry,
-        &segment_velocity,
+        segment_isometry,
+        segment_velocity,
         &segment,
-        &ball_isometry,
-        &ball_velocity,
+        ball_isometry,
+        ball_velocity,
         &ball,
         1.0,
         true,

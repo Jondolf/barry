@@ -1,14 +1,14 @@
 use crate::bounding_volume::SimdAabb;
-use crate::math::{Point, Real, SimdReal, SIMD_WIDTH};
+use crate::math::{SimdVector, Vector, SIMD_WIDTH};
 use crate::partitioning::{SimdVisitStatus, SimdVisitor};
-use simba::simd::{SimdBool as _, SimdValue};
+use simba::simd::SimdBool as _;
 use std::marker::PhantomData;
 
 // FIXME: add a point cost fn.
 
 /// Spatial partitioning structure visitor collecting nodes that may contain a given point.
 pub struct PointIntersectionsVisitor<'a, T, F> {
-    simd_point: Point<SimdReal>,
+    simd_point: SimdVector,
     /// Callback executed for each leaf which Aabb contains `self.point`.
     callback: &'a mut F,
     _phantom: PhantomData<T>,
@@ -20,9 +20,9 @@ where
 {
     /// Creates a new `PointIntersectionsVisitor`.
     #[inline]
-    pub fn new(point: &'a Point<Real>, callback: &'a mut F) -> PointIntersectionsVisitor<'a, T, F> {
+    pub fn new(point: Vector, callback: &'a mut F) -> PointIntersectionsVisitor<'a, T, F> {
         PointIntersectionsVisitor {
-            simd_point: Point::splat(*point),
+            simd_point: SimdVector::splat(point),
             callback,
             _phantom: PhantomData,
         }
@@ -35,15 +35,16 @@ where
 {
     #[inline]
     fn visit(&mut self, bv: &SimdAabb, b: Option<[Option<&T>; SIMD_WIDTH]>) -> SimdVisitStatus {
-        let mask = bv.contains_local_point(&self.simd_point);
+        let mask = bv.contains_local_point(self.simd_point);
 
         if let Some(data) = b {
             let bitmask = mask.bitmask();
             for ii in 0..SIMD_WIDTH {
-                if (bitmask & (1 << ii)) != 0 && data[ii].is_some() {
-                    if !(self.callback)(data[ii].unwrap()) {
-                        return SimdVisitStatus::ExitEarly;
-                    }
+                if (bitmask & (1 << ii)) != 0
+                    && data[ii].is_some()
+                    && !(self.callback)(data[ii].unwrap())
+                {
+                    return SimdVisitStatus::ExitEarly;
                 }
             }
         }

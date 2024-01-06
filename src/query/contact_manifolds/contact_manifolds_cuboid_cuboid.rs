@@ -6,7 +6,7 @@ use crate::shape::{Cuboid, PolygonalFeature, Shape};
 
 /// Computes the contact manifold between two cuboids represented as `Shape` trait-objects.
 pub fn contact_manifold_cuboid_cuboid_shapes<ManifoldData, ContactData: Default + Copy>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     g1: &dyn Shape,
     g2: &dyn Shape,
     prediction: Real,
@@ -19,7 +19,7 @@ pub fn contact_manifold_cuboid_cuboid_shapes<ManifoldData, ContactData: Default 
 
 /// Computes the contact manifold between two cuboids.
 pub fn contact_manifold_cuboid_cuboid<'a, ManifoldData, ContactData: Default + Copy>(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     cuboid1: &'a Cuboid,
     cuboid2: &'a Cuboid,
     prediction: Real,
@@ -29,8 +29,7 @@ pub fn contact_manifold_cuboid_cuboid<'a, ManifoldData, ContactData: Default + C
         return;
     }
 
-    let pos21 = &pos12.inverse();
-    let pos12 = &*pos12;
+    let pos21 = pos12.inverse();
 
     /*
      *
@@ -55,7 +54,7 @@ pub fn contact_manifold_cuboid_cuboid<'a, ManifoldData, ContactData: Default + C
      *
      */
     #[cfg(feature = "dim2")]
-    let sep3 = (-Real::MAX, Vector::x()); // This case does not exist in 2D.
+    let sep3 = (-Real::MAX, Vector::X); // This case does not exist in 2D.
     #[cfg(feature = "dim3")]
     let sep3 = sat::cuboid_cuboid_find_local_separating_edge_twoway(cuboid1, cuboid2, pos12);
     if sep3.0 > prediction {
@@ -90,15 +89,7 @@ pub fn contact_manifold_cuboid_cuboid<'a, ManifoldData, ContactData: Default + C
     let feature2 = cuboid2.support_feature(local_n2);
 
     PolygonalFeature::contacts(
-        pos12,
-        pos21,
-        &best_sep.1,
-        &local_n2,
-        &feature1,
-        &feature2,
-        prediction,
-        manifold,
-        false,
+        pos12, pos21, best_sep.1, local_n2, &feature1, &feature2, prediction, manifold, false,
     );
 
     manifold.local_n1 = best_sep.1;

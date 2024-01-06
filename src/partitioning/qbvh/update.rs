@@ -1,9 +1,10 @@
 use crate::bounding_volume::{Aabb, BoundingVolume, SimdAabb};
-#[cfg(feature = "dim3")]
+use crate::math::Real;
 use crate::math::Vector;
-use crate::math::{Point, Real};
 use crate::partitioning::{CenterDataSplitter, QbvhProxy};
 use crate::simd::{SimdReal, SIMD_WIDTH};
+#[cfg(feature = "dim3")]
+use crate::MinMaxIndex;
 use simba::simd::{SimdBool, SimdValue};
 
 use super::{IndexedData, NodeIndex, Qbvh, QbvhNode, QbvhNodeFlags};
@@ -503,14 +504,14 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
         // In 3D we compute the variance to not-subdivide the dimension with lowest variance.
         // Therefore variance computation is not needed in 2D because we only have 2 dimension
         // to split in the first place.
-        let mut center = Point::origin();
+        let mut center = Vector::ZERO;
         #[cfg(feature = "dim3")]
-        let mut variance = Vector::zeros();
+        let mut variance = Vector::ZERO;
 
         let center_denom = 1.0 / (indices.len() as Real);
 
         for i in &*indices {
-            let coords = workspace.aabbs[*i].center().coords;
+            let coords = workspace.aabbs[*i].center();
             center += coords * center_denom;
         }
 
@@ -519,7 +520,7 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
             let variance_denom = 1.0 / ((indices.len() - 1) as Real);
             for i in &*indices {
                 let dir_to_center = workspace.aabbs[*i].center() - center;
-                variance += dir_to_center.component_mul(&dir_to_center) * variance_denom;
+                variance += dir_to_center * dir_to_center * variance_denom;
             }
         }
 
@@ -529,7 +530,7 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
         let mut subdiv_dims = [0, 1];
         #[cfg(feature = "dim3")]
         {
-            let min = variance.imin();
+            let min = variance.min_index();
             subdiv_dims[0] = (min + 1) % 3;
             subdiv_dims[1] = (min + 2) % 3;
         }
@@ -543,7 +544,7 @@ impl<LeafData: IndexedData> Qbvh<LeafData> {
 
         let nid = if let Some(nid) = self.free_list.pop() {
             self.nodes[nid as usize] = node;
-            nid as u32
+            nid
         } else {
             let nid = self.nodes.len();
             self.nodes.push(node);

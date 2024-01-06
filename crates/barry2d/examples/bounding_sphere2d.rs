@@ -1,24 +1,22 @@
-extern crate nalgebra as na;
-
-use na::{Isometry2, Vector2};
 use barry2d::bounding_volume::BoundingVolume;
+use barry2d::math::{Isometry2, Vector2};
 use barry2d::shape::Cuboid;
 
 fn main() {
     /*
      * Initialize the shapes.
      */
-    let cube1 = Cuboid::new(Vector2::repeat(0.5));
+    let cube1 = Cuboid::new(Vector2::splat(0.5));
     let cube2 = Cuboid::new(Vector2::new(1.0, 0.5));
 
-    let cube1_pos = Isometry2::translation(0.0, 1.0);
-    let cube2_pos = Isometry2::identity();
+    let cube1_pos = Isometry2::from_xy(0.0, 1.0);
+    let cube2_pos = Isometry2::IDENTITY;
 
     /*
      * Compute their bounding spheres.
      */
-    let bounding_sphere_cube1 = cube1.bounding_sphere(&cube1_pos);
-    let bounding_sphere_cube2 = cube2.bounding_sphere(&cube2_pos);
+    let bounding_sphere_cube1 = cube1.bounding_sphere(cube1_pos);
+    let bounding_sphere_cube2 = cube2.bounding_sphere(cube2_pos);
 
     // Merge the two spheres.
     let bounding_bounding_sphere = bounding_sphere_cube1.merged(&bounding_sphere_cube2);

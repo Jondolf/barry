@@ -1,6 +1,6 @@
 use crate::common::{generate, generate_trimesh_around_origin, unref};
-use na::Isometry3;
 use barry3d::bounding_volume::{Aabb, BoundingSphere};
+use barry3d::math::Isometry3;
 use barry3d::query::{Ray, RayCast};
 use barry3d::shape::{
     Ball, Capsule, Cone, ConvexHull, Cuboid, Cylinder, Segment, TriMesh, Triangle,

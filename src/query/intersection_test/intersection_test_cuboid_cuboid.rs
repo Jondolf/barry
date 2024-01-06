@@ -1,11 +1,11 @@
-use crate::math::{Isometry, Real};
+use crate::math::Isometry;
 use crate::query::sat;
 use crate::shape::Cuboid;
 
 /// Intersection test between cuboids.
 #[inline]
 pub fn intersection_test_cuboid_cuboid(
-    pos12: &Isometry<Real>,
+    pos12: Isometry,
     cuboid1: &Cuboid,
     cuboid2: &Cuboid,
 ) -> bool {
@@ -16,7 +16,7 @@ pub fn intersection_test_cuboid_cuboid(
     }
 
     let pos21 = pos12.inverse();
-    let sep2 = sat::cuboid_cuboid_find_local_separating_normal_oneway(cuboid2, cuboid1, &pos21).0;
+    let sep2 = sat::cuboid_cuboid_find_local_separating_normal_oneway(cuboid2, cuboid1, pos21).0;
     if sep2 > 0.0 {
         return false;
     }

@@ -1,30 +1,29 @@
 use crate::mass_properties::MassProperties;
-use crate::math::{Matrix, Point, Real, DIM};
+use crate::math::{Matrix, Real, Vector, DIM};
 use crate::shape::Tetrahedron;
-use num::Zero;
 
 impl MassProperties {
     /// Computes the mass properties of a triangle mesh.
     pub fn from_trimesh(
         density: Real,
-        vertices: &[Point<Real>],
+        vertices: &[Vector],
         indices: &[[u32; DIM]],
     ) -> MassProperties {
         let (volume, com) = trimesh_signed_volume_and_center_of_mass(vertices, indices);
 
-        if volume.is_zero() {
-            return MassProperties::zero();
+        if volume == 0.0 {
+            return MassProperties::ZERO;
         }
 
-        let mut itot = Matrix::zeros();
+        let mut itot = Matrix::ZERO;
 
         for t in indices {
-            let p2 = &vertices[t[0] as usize];
-            let p3 = &vertices[t[1] as usize];
-            let p4 = &vertices[t[2] as usize];
+            let p2 = vertices[t[0] as usize];
+            let p3 = vertices[t[1] as usize];
+            let p4 = vertices[t[2] as usize];
 
-            let vol = Tetrahedron::new(com, *p2, *p3, *p4).signed_volume();
-            let ipart = tetrahedron_unit_inertia_tensor_wrt_point(&com, &com, p2, p3, p4);
+            let vol = Tetrahedron::new(com, p2, p3, p4).signed_volume();
+            let ipart = tetrahedron_unit_inertia_tensor_wrt_point(com, com, p2, p3, p4);
 
             itot += ipart * vol;
         }
@@ -36,12 +35,12 @@ impl MassProperties {
 
 /// Computes the unit inertia tensor of a tetrahedron, with regard to the given `point`.
 pub fn tetrahedron_unit_inertia_tensor_wrt_point(
-    point: &Point<Real>,
-    p1: &Point<Real>,
-    p2: &Point<Real>,
-    p3: &Point<Real>,
-    p4: &Point<Real>,
-) -> Matrix<Real> {
+    point: Vector,
+    p1: Vector,
+    p2: Vector,
+    p3: Vector,
+    p4: Vector,
+) -> Matrix {
     let p1 = p1 - point;
     let p2 = p2 - point;
     let p3 = p3 - point;
@@ -148,17 +147,17 @@ pub fn tetrahedron_unit_inertia_tensor_wrt_point(
         + x4 * y4 * 2.0)
         * 0.05;
 
-    Matrix::new(a0, -b1, -c1, -b1, b0, -a1, -c1, -a1, c0)
+    Matrix::from_cols_array(&[a0, -b1, -c1, -b1, b0, -a1, -c1, -a1, c0])
 }
 
 /// Computes the volume and center-of-mass of a mesh.
 pub fn trimesh_signed_volume_and_center_of_mass(
-    vertices: &[Point<Real>],
+    vertices: &[Vector],
     indices: &[[u32; DIM]],
-) -> (Real, Point<Real>) {
-    let geometric_center = Point::new(-10.0, -10.0, -10.0); // utils::center(vertices);
+) -> (Real, Vector) {
+    let geometric_center = Vector::new(-10.0, -10.0, -10.0); // utils::center(vertices);
 
-    let mut res = Point::origin();
+    let mut res = Vector::ZERO;
     let mut vol = 0.0;
 
     for t in indices {
@@ -169,11 +168,11 @@ pub fn trimesh_signed_volume_and_center_of_mass(
         let volume = Tetrahedron::new(geometric_center, p2, p3, p4).signed_volume();
         let center = Tetrahedron::new(geometric_center, p2, p3, p4).center();
 
-        res += center.coords * volume;
+        res += center * volume;
         vol += volume;
     }
 
-    if vol.is_zero() {
+    if vol == 0.0 {
         (vol, geometric_center)
     } else {
         (vol, res / vol)
@@ -182,7 +181,7 @@ pub fn trimesh_signed_volume_and_center_of_mass(
 
 #[cfg(test)]
 mod test {
-    use crate::math::Vector;
+    use crate::math::{AnyVector, Vector};
     use crate::{
         mass_properties::MassProperties,
         shape::{Ball, Capsule, Cone, Cuboid, Cylinder, Shape},
@@ -191,13 +190,11 @@ mod test {
     fn assert_same_principal_inertias(mprops1: &MassProperties, mprops2: &MassProperties) {
         for k in 0..3 {
             let i1 = mprops1.principal_inertia_local_frame
-                * mprops1.principal_inertia().component_mul(
-                    &(mprops1.principal_inertia_local_frame.inverse() * Vector::ith(k, 1.0)),
-                );
+                * mprops1.principal_inertia()
+                * (mprops1.principal_inertia_local_frame.inverse() * Vector::ith(k, 1.0));
             let i2 = mprops2.principal_inertia_local_frame
-                * mprops2.principal_inertia().component_mul(
-                    &(mprops2.principal_inertia_local_frame.inverse() * Vector::ith(k, 1.0)),
-                );
+                * mprops2.principal_inertia()
+                * (mprops2.principal_inertia_local_frame.inverse() * Vector::ith(k, 1.0));
             assert_relative_eq!(i1, i2, epsilon = 0.5)
         }
     }

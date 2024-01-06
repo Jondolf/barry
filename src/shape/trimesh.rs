@@ -1,5 +1,5 @@
 use crate::bounding_volume::Aabb;
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{Isometry, Vector};
 use crate::partitioning::QbvhStorage;
 use crate::partitioning::{GenericQbvh, Qbvh};
 use crate::shape::trimesh_storage::TriMeshStorage;
@@ -323,7 +323,6 @@ bitflags::bitflags! {
                      Storage::ArrayU32: serde::Serialize,\
                      Storage::ArrayUsize: serde::Serialize,\
                      Storage::ArrayVector: serde::Serialize,\
-                     Storage::ArrayPoint: serde::Serialize,\
                      Storage::ArrayIdx: serde::Serialize,\
                      Storage::ArrayVectorTriple: serde::Serialize",
         deserialize = "<Storage::QbvhStorage as QbvhStorage<u32>>::Nodes: serde::Deserialize<'de>, \
@@ -335,7 +334,6 @@ bitflags::bitflags! {
                      Storage::ArrayU32: serde::Deserialize<'de>,\
                      Storage::ArrayUsize: serde::Deserialize<'de>,\
                      Storage::ArrayVector: serde::Deserialize<'de>,\
-                     Storage::ArrayPoint: serde::Deserialize<'de>,\
                      Storage::ArrayIdx: serde::Deserialize<'de>,\
                      Storage::ArrayVectorTriple: serde::Deserialize<'de>",
     ))
@@ -349,7 +347,7 @@ bitflags::bitflags! {
 /// A triangle mesh.
 pub struct GenericTriMesh<Storage: TriMeshStorage> {
     qbvh: GenericQbvh<u32, Storage::QbvhStorage>,
-    vertices: Storage::ArrayPoint,
+    vertices: Storage::ArrayVector,
     indices: Storage::ArrayIdx,
     #[cfg(feature = "dim3")]
     pub(crate) pseudo_normals: Option<TriMeshPseudoNormals<Storage>>,
@@ -390,7 +388,7 @@ impl CudaTriMesh {
 #[cfg(feature = "std")]
 impl TriMesh {
     /// Creates a new triangle mesh from a vertex buffer and an index buffer.
-    pub fn new(vertices: Vec<Point<Real>>, indices: Vec<[u32; 3]>) -> Self {
+    pub fn new(vertices: Vec<Vector>, indices: Vec<[u32; 3]>) -> Self {
         Self::with_flags(vertices, indices, TriMeshFlags::empty())
     }
 
@@ -422,13 +420,9 @@ impl TriMesh {
     }
 
     /// Creates a new triangle mesh from a vertex buffer and an index buffer, and flags controlling optional properties.
-    pub fn with_flags(
-        vertices: Vec<Point<Real>>,
-        indices: Vec<[u32; 3]>,
-        flags: TriMeshFlags,
-    ) -> Self {
+    pub fn with_flags(vertices: Vec<Vector>, indices: Vec<[u32; 3]>, flags: TriMeshFlags) -> Self {
         assert!(
-            indices.len() > 0,
+            !indices.is_empty(),
             "A triangle mesh must contain at least one triangle."
         );
 
@@ -509,7 +503,7 @@ impl TriMesh {
     }
 
     /// Transforms in-place the vertices of this triangle mesh.
-    pub fn transform_vertices(&mut self, transform: &Isometry<Real>) {
+    pub fn transform_vertices(&mut self, transform: Isometry) {
         self.vertices
             .iter_mut()
             .for_each(|pt| *pt = transform * *pt);
@@ -531,25 +525,23 @@ impl TriMesh {
     }
 
     /// Returns a scaled version of this triangle mesh.
-    pub fn scaled(mut self, scale: &Vector<Real>) -> Self {
-        self.vertices
-            .iter_mut()
-            .for_each(|pt| pt.coords.component_mul_assign(scale));
+    pub fn scaled(mut self, scale: Vector) -> Self {
+        self.vertices.iter_mut().for_each(|pt| *pt *= scale);
 
         #[cfg(feature = "dim3")]
         if let Some(pn) = &mut self.pseudo_normals {
             pn.vertices_pseudo_normal.iter_mut().for_each(|n| {
-                n.component_mul_assign(scale);
-                let _ = n.try_normalize_mut(0.0);
+                *n *= scale;
+                *n = n.try_normalize().unwrap_or(*n);
             });
             pn.edges_pseudo_normal.iter_mut().for_each(|n| {
-                n[0].component_mul_assign(scale);
-                n[1].component_mul_assign(scale);
-                n[2].component_mul_assign(scale);
+                n[0] *= scale;
+                n[1] *= scale;
+                n[2] *= scale;
 
-                let _ = n[0].try_normalize_mut(0.0);
-                let _ = n[1].try_normalize_mut(0.0);
-                let _ = n[2].try_normalize_mut(0.0);
+                n[0] = n[0].try_normalize().unwrap_or(n[0]);
+                n[1] = n[1].try_normalize().unwrap_or(n[1]);
+                n[2] = n[2].try_normalize().unwrap_or(n[2]);
             });
         }
 
@@ -584,7 +576,7 @@ impl TriMesh {
     ///
     /// This operation may fail if the input polygon is invalid, e.g. it is non-simple or has zero surface area.
     #[cfg(feature = "dim2")]
-    pub fn from_polygon(vertices: Vec<Point<Real>>) -> Option<Self> {
+    pub fn from_polygon(vertices: Vec<Vector>) -> Option<Self> {
         triangulate_ear_clipping(&vertices).map(|indices| Self::new(vertices, indices))
     }
 
@@ -659,18 +651,18 @@ impl TriMesh {
         let mut triangle_set = HashSet::new();
 
         fn resolve_coord_id(
-            coord: &Point<Real>,
-            vtx_to_id: &mut HashMap<HashablePartialEq<Point<Real>>, u32>,
-            new_vertices: &mut Vec<Point<Real>>,
+            coord: Vector,
+            vtx_to_id: &mut HashMap<HashablePartialEq<Vector>, u32>,
+            new_vertices: &mut Vec<Vector>,
         ) -> u32 {
-            let key = HashablePartialEq::new(coord.clone());
+            let key = HashablePartialEq::new(coord);
             let id = match vtx_to_id.entry(key) {
                 Entry::Occupied(entry) => entry.into_mut(),
                 Entry::Vacant(entry) => entry.insert(new_vertices.len() as u32),
             };
 
             if *id == new_vertices.len() as u32 {
-                new_vertices.push(coord.clone());
+                new_vertices.push(coord);
             }
 
             *id
@@ -678,19 +670,19 @@ impl TriMesh {
 
         for t in self.indices.iter() {
             let va = resolve_coord_id(
-                &self.vertices[t[0] as usize],
+                self.vertices[t[0] as usize],
                 &mut vtx_to_id,
                 &mut new_vertices,
             );
 
             let vb = resolve_coord_id(
-                &self.vertices[t[1] as usize],
+                self.vertices[t[1] as usize],
                 &mut vtx_to_id,
                 &mut new_vertices,
             );
 
             let vc = resolve_coord_id(
-                &self.vertices[t[2] as usize],
+                self.vertices[t[2] as usize],
                 &mut vtx_to_id,
                 &mut new_vertices,
             );
@@ -746,7 +738,7 @@ impl TriMesh {
     /// It may be useful to call `self.remove_duplicate_vertices()` before this method, in order to fix the
     /// index buffer if some of the vertices of this trimesh are duplicated.
     fn compute_pseudo_normals(&mut self) {
-        let mut vertices_pseudo_normal = vec![Vector::zeros(); self.vertices().len()];
+        let mut vertices_pseudo_normal = vec![Vector::ZERO; self.vertices().len()];
         let mut edges_pseudo_normal = HashMap::default();
         let mut edges_multiplicity = HashMap::default();
 
@@ -758,10 +750,10 @@ impl TriMesh {
                 vtx[idx[2] as usize],
             );
 
-            if let Some(n) = tri.normal() {
-                let ang1 = (tri.b - tri.a).angle(&(tri.c - tri.a));
-                let ang2 = (tri.a - tri.b).angle(&(tri.c - tri.b));
-                let ang3 = (tri.b - tri.c).angle(&(tri.a - tri.c));
+            if let Ok(n) = tri.normal() {
+                let ang1 = (tri.b - tri.a).angle_between(tri.c - tri.a);
+                let ang2 = (tri.a - tri.b).angle_between(tri.c - tri.b);
+                let ang3 = (tri.b - tri.c).angle_between(tri.a - tri.c);
 
                 vertices_pseudo_normal[idx[0] as usize] += *n * ang1;
                 vertices_pseudo_normal[idx[1] as usize] += *n * ang2;
@@ -774,9 +766,7 @@ impl TriMesh {
                 ];
 
                 for edge in &edges {
-                    let edge_n = edges_pseudo_normal
-                        .entry(*edge)
-                        .or_insert_with(Vector::zeros);
+                    let edge_n = edges_pseudo_normal.entry(*edge).or_insert(Vector::ZERO);
                     *edge_n += *n; // NOTE: there is no need to multiply by the incident angle since it is always equal to PI for all the edges.
                     let edge_mult = edges_multiplicity.entry(*edge).or_insert(0);
                     *edge_mult += 1;
@@ -791,11 +781,10 @@ impl TriMesh {
                 let e0 = SortedPair::new(idx[0], idx[1]);
                 let e1 = SortedPair::new(idx[1], idx[2]);
                 let e2 = SortedPair::new(idx[2], idx[0]);
-                let default = Vector::zeros();
                 [
-                    edges_pseudo_normal.get(&e0).copied().unwrap_or(default),
-                    edges_pseudo_normal.get(&e1).copied().unwrap_or(default),
-                    edges_pseudo_normal.get(&e2).copied().unwrap_or(default),
+                    edges_pseudo_normal.get(&e0).copied().unwrap_or_default(),
+                    edges_pseudo_normal.get(&e1).copied().unwrap_or_default(),
+                    edges_pseudo_normal.get(&e2).copied().unwrap_or_default(),
                 ]
             })
             .collect();
@@ -1019,7 +1008,7 @@ impl<Storage: TriMeshStorage> GenericTriMesh<Storage> {
     }
 
     /// Compute the axis-aligned bounding box of this triangle mesh.
-    pub fn aabb(&self, pos: &Isometry<Real>) -> Aabb {
+    pub fn aabb(&self, pos: Isometry) -> Aabb {
         self.qbvh.root_aabb().transform_by(pos)
     }
 
@@ -1058,7 +1047,7 @@ impl<Storage: TriMeshStorage> GenericTriMesh<Storage> {
     }
 
     /// The vertex buffer of this mesh.
-    pub fn vertices(&self) -> &Storage::ArrayPoint {
+    pub fn vertices(&self) -> &Storage::ArrayVector {
         &self.vertices
     }
 
@@ -1151,7 +1140,7 @@ impl From<Cuboid> for TriMesh {
 
 #[cfg(feature = "std")]
 impl SimdCompositeShape for TriMesh {
-    fn map_part_at(&self, i: u32, f: &mut dyn FnMut(Option<&Isometry<Real>>, &dyn Shape)) {
+    fn map_part_at(&self, i: u32, f: &mut dyn FnMut(Option<Isometry>, &dyn Shape)) {
         let tri = self.triangle(i);
         f(None, &tri)
     }
@@ -1167,17 +1156,13 @@ impl<Storage: TriMeshStorage> TypedSimdCompositeShape for GenericTriMesh<Storage
     type QbvhStorage = Storage::QbvhStorage;
 
     #[inline(always)]
-    fn map_typed_part_at(
-        &self,
-        i: u32,
-        mut f: impl FnMut(Option<&Isometry<Real>>, &Self::PartShape),
-    ) {
+    fn map_typed_part_at(&self, i: u32, mut f: impl FnMut(Option<Isometry>, &Self::PartShape)) {
         let tri = self.triangle(i);
         f(None, &tri)
     }
 
     #[inline(always)]
-    fn map_untyped_part_at(&self, i: u32, mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape)) {
+    fn map_untyped_part_at(&self, i: u32, mut f: impl FnMut(Option<Isometry>, &dyn Shape)) {
         let tri = self.triangle(i);
         f(None, &tri)
     }
@@ -1306,7 +1291,6 @@ where
     Storage::ArrayU32: Clone,
     Storage::ArrayUsize: Clone,
     Storage::ArrayVector: Clone,
-    Storage::ArrayPoint: Clone,
     Storage::ArrayIdx: Clone,
     Storage::ArrayVectorTriple: Clone,
 {
@@ -1336,7 +1320,6 @@ where
     Storage::ArrayU32: Copy,
     Storage::ArrayUsize: Copy,
     Storage::ArrayVector: Copy,
-    Storage::ArrayPoint: Copy,
     Storage::ArrayIdx: Copy,
     Storage::ArrayVectorTriple: Copy,
 {
@@ -1355,7 +1338,6 @@ where
     Storage::ArrayU32: cust_core::DeviceCopy + Copy,
     Storage::ArrayUsize: cust_core::DeviceCopy + Copy,
     Storage::ArrayVector: cust_core::DeviceCopy + Copy,
-    Storage::ArrayPoint: cust_core::DeviceCopy + Copy,
     Storage::ArrayIdx: cust_core::DeviceCopy + Copy,
     Storage::ArrayVectorTriple: cust_core::DeviceCopy + Copy,
 {

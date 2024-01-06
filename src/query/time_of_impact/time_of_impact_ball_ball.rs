@@ -1,6 +1,4 @@
-use na::Unit;
-
-use crate::math::{Isometry, Point, Real, Vector};
+use crate::math::{Isometry, Real, UnitVector, Vector};
 use crate::query::{self, Ray, TOIStatus, TOI};
 use crate::shape::Ball;
 use num::Zero;
@@ -8,18 +6,18 @@ use num::Zero;
 /// Time Of Impact of two balls under translational movement.
 #[inline]
 pub fn time_of_impact_ball_ball(
-    pos12: &Isometry<Real>,
-    vel12: &Vector<Real>,
+    pos12: Isometry,
+    vel12: Vector,
     b1: &Ball,
     b2: &Ball,
     max_toi: Real,
 ) -> Option<TOI> {
     let rsum = b1.radius + b2.radius;
     let radius = rsum;
-    let center = Point::from(-pos12.translation.vector);
-    let ray = Ray::new(Point::origin(), *vel12);
+    let center = Vector::from(-pos12.translation);
+    let ray = Ray::new(Vector::ZERO, vel12);
 
-    if let (inside, Some(toi)) = query::details::ray_toi_with_ball(&center, radius, &ray, true) {
+    if let (inside, Some(toi)) = query::details::ray_toi_with_ball(center, radius, &ray, true) {
         if toi > max_toi {
             return None;
         }
@@ -31,18 +29,18 @@ pub fn time_of_impact_ball_ball(
         let witness2;
 
         if radius.is_zero() {
-            normal1 = Vector::x_axis();
-            normal2 = pos12.inverse_transform_unit_vector(&(-Vector::x_axis()));
-            witness1 = Point::origin();
-            witness2 = Point::origin();
+            normal1 = UnitVector::X;
+            normal2 = pos12.rotation.inverse() * -UnitVector::X;
+            witness1 = Vector::ZERO;
+            witness2 = Vector::ZERO;
         } else {
-            normal1 = Unit::new_unchecked(dpt / radius);
-            normal2 = pos12.inverse_transform_unit_vector(&(-normal1));
-            witness1 = Point::from(*normal1 * b1.radius);
-            witness2 = Point::from(*normal2 * b2.radius);
+            normal1 = UnitVector::from_normalized(dpt / radius);
+            normal2 = pos12.rotation.inverse() * -normal1;
+            witness1 = Vector::from(*normal1 * b1.radius);
+            witness2 = Vector::from(*normal2 * b2.radius);
         }
 
-        let status = if inside && center.coords.norm_squared() < rsum * rsum {
+        let status = if inside && center.length_squared() < rsum * rsum {
             TOIStatus::Penetrating
         } else {
             TOIStatus::Converged

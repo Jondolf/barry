@@ -13,7 +13,7 @@ pub use self::storage::QbvhStorage;
 
 mod qbvh;
 mod storage;
-pub(self) mod utils;
+mod utils;
 
 #[cfg(feature = "std")]
 mod build;

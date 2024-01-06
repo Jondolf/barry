@@ -27,7 +27,7 @@ impl<Storage: HeightFieldStorage> RayCast for GenericHeightField<Storage> {
         let clip_ray_a = ray.point_at(min_t);
 
         // None may happen due to slight numerical errors.
-        let mut curr = self.cell_at_point(&clip_ray_a).unwrap_or_else(|| {
+        let mut curr = self.cell_at_point(clip_ray_a).unwrap_or_else(|| {
             if ray.origin.x > 0.0 {
                 self.num_cells() - 1
             } else {
@@ -40,15 +40,15 @@ impl<Storage: HeightFieldStorage> RayCast for GenericHeightField<Storage> {
          */
         if let Some(seg) = self.segment_at(curr) {
             let (s, t) = query::details::closest_points_line_line_parameters(
-                &ray.origin,
-                &ray.dir,
-                &seg.a,
-                &seg.scaled_direction(),
+                ray.origin,
+                ray.dir,
+                seg.a,
+                seg.scaled_direction(),
             );
             if s >= 0.0 && t >= 0.0 && t <= 1.0 {
                 // Cast succeeded on the first element!
-                let n = seg.normal().unwrap().into_inner();
-                let fid = if n.dot(&ray.dir) > 0.0 {
+                let n = seg.normal().unwrap();
+                let fid = if n.dot(ray.dir) > 0.0 {
                     // The ray hit the back face.
                     curr + self.num_cells()
                 } else {
@@ -56,7 +56,7 @@ impl<Storage: HeightFieldStorage> RayCast for GenericHeightField<Storage> {
                     curr
                 };
 
-                return Some(RayIntersection::new(s, n, FeatureId::Face(fid as u32)));
+                return Some(RayIntersection::new(s, *n, FeatureId::Face(fid as u32)));
             }
         }
 
@@ -76,13 +76,9 @@ impl<Storage: HeightFieldStorage> RayCast for GenericHeightField<Storage> {
 
             if right {
                 curr += 1;
-                curr_param = (cell_width * na::convert::<f64, Real>(curr as f64) + start_x
-                    - ray.origin.x)
-                    / ray.dir.x;
+                curr_param = (cell_width * curr as Real + start_x - ray.origin.x) / ray.dir.x;
             } else {
-                curr_param =
-                    (ray.origin.x - cell_width * na::convert::<f64, Real>(curr as f64) - start_x)
-                        / ray.dir.x;
+                curr_param = (ray.origin.x - cell_width * curr as Real - start_x) / ray.dir.x;
                 curr -= 1;
             }
 
@@ -94,22 +90,22 @@ impl<Storage: HeightFieldStorage> RayCast for GenericHeightField<Storage> {
             if let Some(seg) = self.segment_at(curr) {
                 // TODO: test the y-coordinates (equivalent to an Aabb test) before actually computing the intersection.
                 let (s, t) = query::details::closest_points_line_line_parameters(
-                    &ray.origin,
-                    &ray.dir,
-                    &seg.a,
-                    &seg.scaled_direction(),
+                    ray.origin,
+                    ray.dir,
+                    seg.a,
+                    seg.scaled_direction(),
                 );
 
                 if t >= 0.0 && t <= 1.0 && s <= max_toi {
-                    let n = seg.normal().unwrap().into_inner();
-                    let fid = if n.dot(&ray.dir) > 0.0 {
+                    let n = seg.normal().unwrap();
+                    let fid = if n.dot(ray.dir) > 0.0 {
                         // The ray hit the back face.
                         curr + self.num_cells()
                     } else {
                         // The ray hit the front face.
                         curr
                     };
-                    return Some(RayIntersection::new(s, n, FeatureId::Face(fid as u32)));
+                    return Some(RayIntersection::new(s, *n, FeatureId::Face(fid as u32)));
                 }
             }
         }
@@ -133,7 +129,7 @@ impl<Storage: HeightFieldStorage> RayCast for GenericHeightField<Storage> {
         let (min_t, mut max_t) = aabb.clip_ray_parameters(ray)?;
         max_t = max_t.min(max_toi);
         let clip_ray_a = ray.point_at(min_t);
-        let mut cell = match self.cell_at_point(&clip_ray_a) {
+        let mut cell = match self.cell_at_point(clip_ray_a) {
             Some(cell) => cell,
             // None may happen due to slight numerical errors.
             None => {

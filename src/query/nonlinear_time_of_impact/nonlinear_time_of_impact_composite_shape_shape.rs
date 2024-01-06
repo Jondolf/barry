@@ -4,7 +4,6 @@ use crate::partitioning::{SimdBestFirstVisitStatus, SimdBestFirstVisitor};
 use crate::query::{self, details::NonlinearTOIMode, NonlinearRigidMotion, QueryDispatcher, TOI};
 use crate::shape::{Ball, Shape, TypedSimdCompositeShape};
 use crate::utils::DefaultStorage;
-use simba::simd::SimdValue;
 
 /// Time Of Impact of a composite shape with any other shape, under a rigid motion (translation + rotation).
 pub fn nonlinear_time_of_impact_composite_shape_shape<D: ?Sized, G1: ?Sized>(
@@ -129,7 +128,7 @@ where
         let mut mask = [false; SIMD_WIDTH];
         let mut results = [None; SIMD_WIDTH];
 
-        // let centers1: [Point<Real>; SIMD_WIDTH] = bv.center().into();
+        // let centers1: [Point; SIMD_WIDTH] = bv.center().into();
         let centers1 = bv.center();
         let radius1: [Real; SIMD_WIDTH] = bv.radius().into();
 
@@ -137,8 +136,8 @@ where
             let center1 = centers1.extract(ii);
             let ball1 = Ball::new(radius1[ii]);
             let ball2 = Ball::new(self.sphere2.radius());
-            let ball_motion1 = self.motion1.prepend_translation(center1.coords);
-            let ball_motion2 = self.motion2.prepend_translation(self.sphere2.center.coords);
+            let ball_motion1 = self.motion1.prepend_translation(center1);
+            let ball_motion2 = self.motion2.prepend_translation(self.sphere2.center);
 
             if let Some(toi) = query::details::nonlinear_time_of_impact_support_map_support_map(
                 self.dispatcher,
@@ -159,7 +158,7 @@ where
                             let toi = if let Some(part_pos1) = part_pos1 {
                                 self.dispatcher
                                     .nonlinear_time_of_impact(
-                                        &self.motion1.prepend(*part_pos1),
+                                        &self.motion1.prepend(part_pos1),
                                         g1,
                                         self.motion2,
                                         self.g2,

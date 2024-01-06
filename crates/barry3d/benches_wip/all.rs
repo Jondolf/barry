@@ -1,7 +1,6 @@
 #![feature(test)]
 #![allow(unused_macros)]
 
-extern crate nalgebra as na;
 extern crate barry3d;
 extern crate rand;
 extern crate test;

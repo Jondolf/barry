@@ -1,7 +1,7 @@
 use crate::bounding_volume::Aabb;
-use crate::math::{Isometry, Point, Real, SimdBool, SimdReal, Vector, DIM, SIMD_WIDTH};
+use crate::math::{Real, SimdBool, SimdIsometry, SimdReal, SimdVector, DIM, SIMD_WIDTH};
 use crate::query::SimdRay;
-use crate::utils::{self, IsometryOps};
+use crate::utils::{self, SimdIsometryOps};
 use num::{One, Zero};
 use simba::simd::{SimdPartialOrd, SimdValue};
 
@@ -15,9 +15,9 @@ use simba::simd::{SimdPartialOrd, SimdValue};
 #[cfg_attr(feature = "cuda", derive(cust_core::DeviceCopy))]
 pub struct SimdAabb {
     /// The min coordinates of the Aabbs.
-    pub mins: Point<SimdReal>,
+    pub mins: SimdVector,
     /// The max coordinates the Aabbs.
-    pub maxs: Point<SimdReal>,
+    pub maxs: SimdVector,
 }
 
 #[cfg(feature = "serde-serialize")]
@@ -131,31 +131,31 @@ impl SimdAabb {
     /// Builds an SIMD aabb composed of four identical aabbs.
     pub fn splat(aabb: Aabb) -> Self {
         Self {
-            mins: Point::splat(aabb.mins),
-            maxs: Point::splat(aabb.maxs),
+            mins: SimdVector::splat(aabb.mins),
+            maxs: SimdVector::splat(aabb.maxs),
         }
     }
 
     /// The center of all the Aabbs represented by `self``.
-    pub fn center(&self) -> Point<SimdReal> {
-        na::center(&self.mins, &self.maxs)
+    pub fn center(&self) -> SimdVector {
+        (self.mins + self.maxs) / SimdReal::splat(2.0)
     }
 
     /// The half-extents of all the Aabbs represented by `self``.
-    pub fn half_extents(&self) -> Vector<SimdReal> {
+    pub fn half_extents(&self) -> SimdVector {
         (self.maxs - self.mins) * SimdReal::splat(0.5)
     }
 
     /// The radius of all the Aabbs represented by `self``.
     pub fn radius(&self) -> SimdReal {
-        (self.maxs - self.mins).norm()
+        (self.maxs - self.mins).length()
     }
 
     /// Return the Aabb of the `self` transformed by the given isometry.
-    pub fn transform_by(&self, transform: &Isometry<SimdReal>) -> Self {
+    pub fn transform_by(&self, transform: SimdIsometry) -> Self {
         let ls_center = self.center();
         let center = transform * ls_center;
-        let ws_half_extents = transform.absolute_transform_vector(&self.half_extents());
+        let ws_half_extents = transform.absolute_transform_vector(self.half_extents());
         Self {
             mins: center + (-ws_half_extents),
             maxs: center + ws_half_extents,
@@ -164,19 +164,19 @@ impl SimdAabb {
 
     /// Returns a scaled version of this Aabb.
     #[inline]
-    pub fn scaled(self, scale: &Vector<SimdReal>) -> Self {
-        let a = self.mins.coords.component_mul(scale);
-        let b = self.maxs.coords.component_mul(scale);
+    pub fn scaled(self, scale: SimdVector) -> Self {
+        let a = self.mins * scale;
+        let b = self.maxs * scale;
         Self {
-            mins: a.inf(&b).into(),
-            maxs: a.sup(&b).into(),
+            mins: a.min(b),
+            maxs: a.max(b),
         }
     }
 
     /// Enlarges this bounding volume by the given margin.
     pub fn loosen(&mut self, margin: SimdReal) {
-        self.mins -= Vector::repeat(margin);
-        self.maxs += Vector::repeat(margin);
+        self.mins -= SimdVector::splat_simd_real(margin);
+        self.maxs += SimdVector::splat_simd_real(margin);
     }
 
     /// Dilate all the Aabbs represented by `self`` by their extents multiplied
@@ -240,24 +240,20 @@ impl SimdAabb {
     }
 
     /// Computes the distances between a point and all the Aabbs represented by `self`.
-    pub fn distance_to_local_point(&self, point: &Point<SimdReal>) -> SimdReal {
+    pub fn distance_to_local_point(&self, point: SimdVector) -> SimdReal {
         let mins_point = self.mins - point;
         let point_maxs = point - self.maxs;
-        let shift = mins_point.sup(&point_maxs).sup(&na::zero());
-        shift.norm()
+        let shift = mins_point.max(point_maxs).max(SimdVector::ZERO);
+        shift.length()
     }
 
     /// Computes the distances between the origin and all the Aabbs represented by `self`.
     pub fn distance_to_origin(&self) -> SimdReal {
-        self.mins
-            .coords
-            .sup(&-self.maxs.coords)
-            .sup(&Vector::zeros())
-            .norm()
+        self.mins.max(-self.maxs).max(SimdVector::ZERO).length()
     }
 
     /// Check which Aabb represented by `self` contains the given `point`.
-    pub fn contains_local_point(&self, point: &Point<SimdReal>) -> SimdBool {
+    pub fn contains_local_point(&self, point: SimdVector) -> SimdBool {
         #[cfg(feature = "dim2")]
         return self.mins.x.simd_le(point.x)
             & self.mins.y.simd_le(point.y)
@@ -335,8 +331,8 @@ impl SimdAabb {
     /// Merge all the Aabb represented by `self` into a single one.
     pub fn to_merged_aabb(&self) -> Aabb {
         Aabb::new(
-            self.mins.coords.map(|e| e.simd_horizontal_min()).into(),
-            self.maxs.coords.map(|e| e.simd_horizontal_max()).into(),
+            self.mins.map(|e| e.simd_horizontal_min()),
+            self.maxs.map(|e| e.simd_horizontal_max()),
         )
     }
 
@@ -352,8 +348,8 @@ impl From<[Aabb; SIMD_WIDTH]> for SimdAabb {
         let maxs = array![|ii| aabbs[ii].maxs; SIMD_WIDTH];
 
         SimdAabb {
-            mins: Point::from(mins),
-            maxs: Point::from(maxs),
+            mins: SimdVector::from_vecs(mins),
+            maxs: SimdVector::from_vecs(maxs),
         }
     }
 }

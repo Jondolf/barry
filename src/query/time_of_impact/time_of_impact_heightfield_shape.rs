@@ -8,8 +8,8 @@ use crate::{bounding_volume::Aabb, query::RayCast};
 #[cfg(feature = "dim2")]
 pub fn time_of_impact_heightfield_shape<Storage, D: ?Sized>(
     dispatcher: &D,
-    pos12: &Isometry<Real>,
-    vel12: &Vector<Real>,
+    pos12: Isometry,
+    vel12: Vector,
     heightfield1: &GenericHeightField<Storage>,
     g2: &dyn Shape,
     max_toi: Real,
@@ -20,7 +20,7 @@ where
     D: QueryDispatcher,
 {
     let aabb2_1 = g2.compute_aabb(pos12);
-    let ray = Ray::new(aabb2_1.center(), *vel12);
+    let ray = Ray::new(aabb2_1.center(), vel12);
 
     let mut curr_range = heightfield1.unclamped_elements_range_in_local_aabb(&aabb2_1);
     // Enlarge the range by 1 to account for movement within a cell.
@@ -73,13 +73,9 @@ where
 
         if right {
             curr_elt += 1;
-            curr_param = (cell_width * na::convert::<f64, Real>(curr_elt as f64) + start_x
-                - ray.origin.x)
-                / ray.dir.x;
+            curr_param = (cell_width * curr_elt as Real + start_x - ray.origin.x) / ray.dir.x;
         } else {
-            curr_param =
-                (ray.origin.x - cell_width * na::convert::<f64, Real>(curr_elt as f64) - start_x)
-                    / ray.dir.x;
+            curr_param = (ray.origin.x - cell_width * curr_elt as Real - start_x) / ray.dir.x;
             curr_elt -= 1;
         }
 
@@ -106,8 +102,8 @@ where
 #[cfg(feature = "dim3")]
 pub fn time_of_impact_heightfield_shape<Storage, D: ?Sized>(
     dispatcher: &D,
-    pos12: &Isometry<Real>,
-    vel12: &Vector<Real>,
+    pos12: Isometry,
+    vel12: Vector,
     heightfield1: &GenericHeightField<Storage>,
     g2: &dyn Shape,
     max_toi: Real,
@@ -119,7 +115,7 @@ where
 {
     let aabb1 = heightfield1.local_aabb();
     let mut aabb2_1 = g2.compute_aabb(pos12);
-    let ray = Ray::new(aabb2_1.center(), *vel12);
+    let ray = Ray::new(aabb2_1.center(), vel12);
 
     // Find the first hit between the aabbs.
     let hext2_1 = aabb2_1.half_extents();
@@ -195,7 +191,7 @@ where
         return Ok(best_hit);
     }
 
-    let mut cell = heightfield1.unclamped_cell_at_point(&aabb2_1.center());
+    let mut cell = heightfield1.unclamped_cell_at_point(aabb2_1.center());
 
     loop {
         let prev_cell = cell;
@@ -283,8 +279,8 @@ where
 /// Time Of Impact between a moving shape and a heightfield.
 pub fn time_of_impact_shape_heightfield<Storage, D: ?Sized>(
     dispatcher: &D,
-    pos12: &Isometry<Real>,
-    vel12: &Vector<Real>,
+    pos12: Isometry,
+    vel12: Vector,
     g1: &dyn Shape,
     heightfield2: &GenericHeightField<Storage>,
     max_toi: Real,
@@ -296,8 +292,8 @@ where
 {
     Ok(time_of_impact_heightfield_shape(
         dispatcher,
-        &pos12.inverse(),
-        &-pos12.inverse_transform_vector(vel12),
+        pos12.inverse(),
+        -(pos12.rotation.inverse() * vel12),
         heightfield2,
         g1,
         max_toi,

@@ -1,5 +1,5 @@
 use crate::bounding_volume::SimdAabb;
-use crate::math::{Isometry, Point, Real, SimdBool, SimdReal, Vector, SIMD_WIDTH};
+use crate::math::{Isometry, Real, SimdBool, SimdReal, SimdVector, Vector, SIMD_WIDTH};
 use crate::partitioning::{SimdBestFirstVisitStatus, SimdBestFirstVisitor};
 use crate::query::{QueryDispatcher, Ray, SimdRay, TOI};
 use crate::shape::{Shape, TypedSimdCompositeShape};
@@ -9,8 +9,8 @@ use simba::simd::{SimdBool as _, SimdPartialOrd, SimdValue};
 /// Time Of Impact of a composite shape with any other shape, under translational movement.
 pub fn time_of_impact_composite_shape_shape<D: ?Sized, G1: ?Sized>(
     dispatcher: &D,
-    pos12: &Isometry<Real>,
-    vel12: &Vector<Real>,
+    pos12: Isometry,
+    vel12: Vector,
     g1: &G1,
     g2: &dyn Shape,
     max_toi: Real,
@@ -37,8 +37,8 @@ where
 /// Time Of Impact of any shape with a composite shape, under translational movement.
 pub fn time_of_impact_shape_composite_shape<D: ?Sized, G2: ?Sized>(
     dispatcher: &D,
-    pos12: &Isometry<Real>,
-    vel12: &Vector<Real>,
+    pos12: Isometry,
+    vel12: Vector,
     g1: &dyn Shape,
     g2: &G2,
     max_toi: Real,
@@ -50,8 +50,8 @@ where
 {
     time_of_impact_composite_shape_shape(
         dispatcher,
-        &pos12.inverse(),
-        &-pos12.inverse_transform_vector(vel12),
+        pos12.inverse(),
+        -(pos12.rotation.inverse() * vel12),
         g2,
         g1,
         max_toi,
@@ -62,13 +62,13 @@ where
 
 /// A visitor used to find the time-of-impact between a composite shape and a shape.
 pub struct TOICompositeShapeShapeBestFirstVisitor<'a, D: ?Sized, G1: ?Sized + 'a> {
-    msum_shift: Vector<SimdReal>,
-    msum_margin: Vector<SimdReal>,
+    msum_shift: SimdVector,
+    msum_margin: SimdVector,
     ray: SimdRay,
 
     dispatcher: &'a D,
-    pos12: &'a Isometry<Real>,
-    vel12: &'a Vector<Real>,
+    pos12: Isometry,
+    vel12: Vector,
     g1: &'a G1,
     g2: &'a dyn Shape,
     max_toi: Real,
@@ -83,20 +83,20 @@ where
     /// Creates a new visitor used to find the time-of-impact between a composite shape and a shape.
     pub fn new(
         dispatcher: &'a D,
-        pos12: &'a Isometry<Real>,
-        vel12: &'a Vector<Real>,
+        pos12: Isometry,
+        vel12: Vector,
         g1: &'a G1,
         g2: &'a dyn Shape,
         max_toi: Real,
         stop_at_penetration: bool,
     ) -> TOICompositeShapeShapeBestFirstVisitor<'a, D, G1> {
         let ls_aabb2 = g2.compute_aabb(pos12);
-        let ray = Ray::new(Point::origin(), *vel12);
+        let ray = Ray::new(Vector::ZERO, vel12);
 
         TOICompositeShapeShapeBestFirstVisitor {
             dispatcher,
-            msum_shift: Vector::splat(-ls_aabb2.center().coords),
-            msum_margin: Vector::splat(ls_aabb2.half_extents()),
+            msum_shift: SimdVector::splat(-ls_aabb2.center()),
+            msum_margin: SimdVector::splat(ls_aabb2.half_extents()),
             ray: SimdRay::splat(ray),
             pos12,
             vel12,
@@ -148,8 +148,8 @@ where
                             toi = self
                                 .dispatcher
                                 .time_of_impact(
-                                    &part_pos1.inv_mul(self.pos12),
-                                    &part_pos1.inverse_transform_vector(self.vel12),
+                                    part_pos1.inv_mul(self.pos12),
+                                    part_pos1.rotation.inverse() * self.vel12,
                                     g1,
                                     self.g2,
                                     self.max_toi,

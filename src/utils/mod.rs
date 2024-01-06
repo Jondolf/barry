@@ -9,7 +9,7 @@ pub use self::deterministic_state::DeterministicState;
 #[cfg(feature = "std")]
 pub use self::cleanup::remove_unused_points;
 pub(crate) use self::inv::inv;
-pub use self::isometry_ops::{IsometryOps, IsometryOpt};
+pub use self::isometry_ops::{IsometryOps, IsometryOpt, SimdIsometryOps};
 pub use self::median::median;
 pub use self::point_cloud_support_point::{
     point_cloud_support_point, point_cloud_support_point_id,
@@ -22,9 +22,6 @@ pub use self::as_bytes::AsBytes;
 pub(crate) use self::consts::*;
 pub use self::cov::{center_cov, cov};
 pub use self::hashable_partial_eq::HashablePartialEq;
-#[cfg(feature = "std")]
-pub use self::interval::{find_root_intervals, find_root_intervals_to, Interval, IntervalFunction};
-pub use self::obb::obb;
 pub use self::segments_intersection::{segments_intersection2d, SegmentsIntersection};
 #[cfg(feature = "dim3")]
 pub(crate) use self::sort::sort2;
@@ -60,12 +57,9 @@ mod deterministic_state;
 mod hashable_partial_eq;
 #[cfg(feature = "std")]
 pub mod hashmap;
-#[cfg(feature = "std")]
-mod interval;
 mod inv;
 mod isometry_ops;
 mod median;
-mod obb;
 mod point_cloud_support_point;
 mod point_in_poly2d;
 #[cfg(feature = "dim2")]

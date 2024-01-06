@@ -1,14 +1,12 @@
 //! Support mapping based Cuboid shape.
 
-use crate::math::{Point, Real, Vector};
+use crate::math::UnitVector;
+use crate::math::Vector;
 #[cfg(feature = "dim3")]
 use crate::shape::Segment;
 use crate::shape::{FeatureId, PackedFeatureId, PolygonalFeature, SupportMap};
 use crate::utils::WSign;
-use na::Unit;
-
-#[cfg(not(feature = "std"))]
-use na::RealField; // for .copysign()
+use crate::MinMaxIndex;
 
 #[cfg(feature = "rkyv")]
 use rkyv::{bytecheck, CheckBytes};
@@ -26,20 +24,20 @@ use rkyv::{bytecheck, CheckBytes};
 #[repr(C)]
 pub struct Cuboid {
     /// The half-extents of the cuboid.
-    pub half_extents: Vector<Real>,
+    pub half_extents: Vector,
 }
 
 impl Cuboid {
     /// Creates a new box from its half-extents. Half-extents are the box half-width along each
     /// axis. Each half-extent must be positive.
     #[inline]
-    pub fn new(half_extents: Vector<Real>) -> Cuboid {
+    pub fn new(half_extents: Vector) -> Cuboid {
         Cuboid { half_extents }
     }
 
     /// Computes a scaled version of this cuboid.
-    pub fn scaled(self, scale: &Vector<Real>) -> Self {
-        let new_hext = self.half_extents.component_mul(scale);
+    pub fn scaled(self, scale: Vector) -> Self {
+        let new_hext = self.half_extents * scale;
         Self {
             half_extents: new_hext,
         }
@@ -48,14 +46,14 @@ impl Cuboid {
     /// Return the id of the vertex of this cuboid with a normal that maximizes
     /// the dot product with `dir`.
     #[cfg(feature = "dim2")]
-    pub fn vertex_feature_id(vertex: Point<Real>) -> u32 {
+    pub fn vertex_feature_id(vertex: Vector) -> u32 {
         ((vertex.x.to_bits() >> 31) & 0b001 | (vertex.y.to_bits() >> 30) & 0b010) as u32
     }
 
     /// Return the feature of this cuboid with a normal that maximizes
     /// the dot product with `dir`.
     #[cfg(feature = "dim2")]
-    pub fn support_feature(&self, local_dir: Vector<Real>) -> PolygonalFeature {
+    pub fn support_feature(&self, local_dir: Vector) -> PolygonalFeature {
         // In 2D, it is best for stability to always return a face.
         // It won't have any notable impact on performances anyway.
         self.support_face(local_dir)
@@ -64,11 +62,11 @@ impl Cuboid {
     /// Return the face of this cuboid with a normal that maximizes
     /// the dot product with `local_dir`.
     #[cfg(feature = "dim2")]
-    pub fn support_face(&self, local_dir: Vector<Real>) -> PolygonalFeature {
+    pub fn support_face(&self, local_dir: Vector) -> PolygonalFeature {
         let he = self.half_extents;
-        let i = local_dir.iamin();
+        let i = local_dir.abs().min_index();
         let j = (i + 1) % 2;
-        let mut a = Point::origin();
+        let mut a = Vector::ZERO;
         a[i] = he[i];
         a[j] = he[j].copysign(local_dir[j]);
 
@@ -90,7 +88,7 @@ impl Cuboid {
     /// Return the face of this cuboid with a normal that maximizes
     /// the dot product with `local_dir`.
     #[cfg(feature = "dim3")]
-    pub fn support_feature(&self, local_dir: Vector<Real>) -> PolygonalFeature {
+    pub fn support_feature(&self, local_dir: Vector) -> PolygonalFeature {
         // FIXME: this should actually return the feature.
         // And we should change all the callers of this method to use
         // `.support_face` instead of this method to preserve their old behavior.
@@ -116,8 +114,8 @@ impl Cuboid {
     }
 
     // #[cfg(feature = "dim3")
-    // pub(crate) fn support_vertex(&self, local_dir: Vector<Real>) -> CuboidFeatureVertex {
-    //     let vertex = local_support_point(self, local_dir);
+    // pub(crate) fn support_vertex(&self, local_dir: Vector) -> CuboidFeatureVertex {
+    //     let vertex = local_support_point(&self, local_dir);
     //     let vid = vertex_feature_id(vertex);
     //
     //     CuboidFeatureVertex { vertex, vid }
@@ -126,12 +124,12 @@ impl Cuboid {
     /// Return the edge segment of this cuboid with a normal cone containing
     /// a direction that that maximizes the dot product with `local_dir`.
     #[cfg(feature = "dim3")]
-    pub fn local_support_edge_segment(&self, local_dir: Vector<Real>) -> Segment {
+    pub fn local_support_edge_segment(&self, local_dir: Vector) -> Segment {
         let he = self.half_extents;
-        let i = local_dir.iamin();
+        let i = local_dir.abs().min_index();
         let j = (i + 1) % 3;
         let k = (i + 2) % 3;
-        let mut a = Point::origin();
+        let mut a = Vector::ZERO;
         a[i] = he[i];
         a[j] = he[j].copysign(local_dir[j]);
         a[k] = he[k].copysign(local_dir[k]);
@@ -144,31 +142,34 @@ impl Cuboid {
 
     /// Computes the face with a normal that maximizes the dot-product with `local_dir`.
     #[cfg(feature = "dim3")]
-    pub fn support_face(&self, local_dir: Vector<Real>) -> PolygonalFeature {
+    pub fn support_face(&self, local_dir: Vector) -> PolygonalFeature {
         // NOTE: can we use the orthonormal basis of local_dir
         // to make this AoSoA friendly?
+
+        use crate::math::Real;
+
         let he = self.half_extents;
-        let iamax = local_dir.iamax();
+        let iamax = local_dir.abs().max_index();
         let sign = (1.0 as Real).copysign(local_dir[iamax]);
 
         let vertices = match iamax {
             0 => [
-                Point::new(he.x * sign, he.y, he.z),
-                Point::new(he.x * sign, -he.y, he.z),
-                Point::new(he.x * sign, -he.y, -he.z),
-                Point::new(he.x * sign, he.y, -he.z),
+                Vector::new(he.x * sign, he.y, he.z),
+                Vector::new(he.x * sign, -he.y, he.z),
+                Vector::new(he.x * sign, -he.y, -he.z),
+                Vector::new(he.x * sign, he.y, -he.z),
             ],
             1 => [
-                Point::new(he.x, he.y * sign, he.z),
-                Point::new(-he.x, he.y * sign, he.z),
-                Point::new(-he.x, he.y * sign, -he.z),
-                Point::new(he.x, he.y * sign, -he.z),
+                Vector::new(he.x, he.y * sign, he.z),
+                Vector::new(-he.x, he.y * sign, he.z),
+                Vector::new(-he.x, he.y * sign, -he.z),
+                Vector::new(he.x, he.y * sign, -he.z),
             ],
             2 => [
-                Point::new(he.x, he.y, he.z * sign),
-                Point::new(he.x, -he.y, he.z * sign),
-                Point::new(-he.x, -he.y, he.z * sign),
-                Point::new(-he.x, he.y, he.z * sign),
+                Vector::new(he.x, he.y, he.z * sign),
+                Vector::new(he.x, -he.y, he.z * sign),
+                Vector::new(-he.x, -he.y, he.z * sign),
+                Vector::new(-he.x, he.y, he.z * sign),
             ],
             _ => unreachable!(),
         };
@@ -234,20 +235,20 @@ impl Cuboid {
 
     /// The normal of the given feature of this shape.
     #[cfg(feature = "dim2")]
-    pub fn feature_normal(&self, feature: FeatureId) -> Option<Unit<Vector<Real>>> {
+    pub fn feature_normal(&self, feature: FeatureId) -> Option<UnitVector> {
         match feature {
             FeatureId::Face(id) => {
-                let mut dir: Vector<Real> = na::zero();
+                let mut dir = Vector::ZERO;
 
                 if id < 2 {
                     dir[id as usize] = 1.0;
                 } else {
                     dir[id as usize - 2] = -1.0;
                 }
-                Some(Unit::new_unchecked(dir))
+                Some(UnitVector::from_normalized(dir))
             }
             FeatureId::Vertex(id) => {
-                let mut dir: Vector<Real> = na::zero();
+                let mut dir = Vector::ZERO;
 
                 match id {
                     0b00 => {
@@ -269,7 +270,7 @@ impl Cuboid {
                     _ => return None,
                 }
 
-                Some(Unit::new_normalize(dir))
+                Some(UnitVector::new(dir).unwrap())
             }
             _ => None,
         }
@@ -277,17 +278,17 @@ impl Cuboid {
 
     /// The normal of the given feature of this shape.
     #[cfg(feature = "dim3")]
-    pub fn feature_normal(&self, feature: FeatureId) -> Option<Unit<Vector<Real>>> {
+    pub fn feature_normal(&self, feature: FeatureId) -> Option<UnitVector> {
         match feature {
             FeatureId::Face(id) => {
-                let mut dir: Vector<Real> = na::zero();
+                let mut dir = Vector::ZERO;
 
                 if id < 3 {
                     dir[id as usize] = 1.0;
                 } else {
                     dir[id as usize - 3] = -1.0;
                 }
-                Some(Unit::new_unchecked(dir))
+                Some(UnitVector::from_normalized(dir))
             }
             FeatureId::Edge(id) => {
                 let edge = id & 0b011;
@@ -295,36 +296,33 @@ impl Cuboid {
                 let face2 = (edge + 2) % 3;
                 let signs = id >> 2;
 
-                let mut dir: Vector<Real> = na::zero();
-                let _1: Real = na::one();
+                let mut dir = Vector::ZERO;
 
                 if signs & (1 << face1) != 0 {
-                    dir[face1 as usize] = -_1
+                    dir[face1 as usize] = -1.0
                 } else {
-                    dir[face1 as usize] = _1
+                    dir[face1 as usize] = 1.0
                 }
 
                 if signs & (1 << face2) != 0 {
-                    dir[face2 as usize] = -_1
+                    dir[face2 as usize] = -1.0
                 } else {
-                    dir[face2 as usize] = _1;
+                    dir[face2 as usize] = 1.0;
                 }
 
-                Some(Unit::new_normalize(dir))
+                Some(UnitVector::new(dir).unwrap())
             }
             FeatureId::Vertex(id) => {
-                let mut dir: Vector<Real> = na::zero();
+                let mut dir = Vector::ZERO;
                 for i in 0..3 {
-                    let _1: Real = na::one();
-
                     if id & (1 << i) != 0 {
-                        dir[i] = -_1;
+                        dir[i] = -1.0;
                     } else {
-                        dir[i] = _1
+                        dir[i] = 1.0
                     }
                 }
 
-                Some(Unit::new_normalize(dir))
+                Some(UnitVector::new(dir).unwrap())
             }
             _ => None,
         }
@@ -333,14 +331,14 @@ impl Cuboid {
 
 impl SupportMap for Cuboid {
     #[inline]
-    fn local_support_point(&self, dir: &Vector<Real>) -> Point<Real> {
+    fn local_support_point(&self, dir: Vector) -> Vector {
         dir.copy_sign_to(self.half_extents).into()
     }
 }
 
 /*
 impl ConvexPolyhedron for Cuboid {
-    fn vertex(&self, id: FeatureId) -> Point<Real> {
+    fn vertex(&self, id: FeatureId) -> Vector {
         let vid = id.unwrap_vertex();
         let mut res = self.half_extents;
 
@@ -354,7 +352,7 @@ impl ConvexPolyhedron for Cuboid {
     }
 
     #[cfg(feature = "dim3")]
-    fn edge(&self, id: FeatureId) -> (Point<Real>, Point<Real>, FeatureId, FeatureId) {
+    fn edge(&self, id: FeatureId) -> (Vector, Vector, FeatureId, FeatureId) {
         let eid = id.unwrap_edge();
         let mut res = self.half_extents;
 
@@ -418,9 +416,9 @@ impl ConvexPolyhedron for Cuboid {
             out.push(p1, FeatureId::Vertex(vertex_id1));
             out.push(p2, FeatureId::Vertex(vertex_id2));
 
-            let mut normal: Vector<Real> = na::zero();
+            let mut normal=Vector::ZERO;
             normal[i1] = sign;
-            out.set_normal(Unit::new_unchecked(normal));
+            out.set_normal(UnitVector::from_normalized(normal));
             out.set_feature_id(FeatureId::Face(i as u32));
         }
         #[cfg(feature = "dim3")]
@@ -472,9 +470,9 @@ impl ConvexPolyhedron for Cuboid {
                 edge_i3 as u32 | ((vertex_id & mask_i3) << 2),
             ));
 
-            let mut normal: Vector<Real> = na::zero();
+            let mut normal=Vector::ZERO;
             normal[i1] = sign;
-            out.set_normal(Unit::new_unchecked(normal));
+            out.set_normal(UnitVector::from_normalized(normal));
 
             if sign > 0.0 {
                 out.set_feature_id(FeatureId::Face(i1 as u32));
@@ -488,8 +486,8 @@ impl ConvexPolyhedron for Cuboid {
 
     fn support_face_toward(
         &self,
-        m: &Isometry<Real>,
-        dir: &Unit<Vector<Real>>,
+        m: Isometry,
+        dir: UnitVector,
         out: &mut ConvexPolygonalFeature,
     ) {
         out.clear();
@@ -518,8 +516,8 @@ impl ConvexPolyhedron for Cuboid {
 
     fn support_feature_toward(
         &self,
-        m: &Isometry<Real>,
-        dir: &Unit<Vector<Real>>,
+        m: Isometry,
+        dir: UnitVector,
         angle: Real,
         out: &mut ConvexPolygonalFeature,
     ) {
@@ -614,7 +612,7 @@ impl ConvexPolyhedron for Cuboid {
         }
     }
 
-    fn support_feature_id_toward(&self, local_dir: &Unit<Vector<Real>>) -> FeatureId {
+    fn support_feature_id_toward(&self, local_dir: UnitVector) -> FeatureId {
         let one_degree: Real = na::convert::<f64, Real>(f64::consts::PI / 180.0);
         let cang = ComplexField::cos(one_degree);
 

@@ -1,6 +1,4 @@
-extern crate nalgebra as na;
-
-use na::Vector2;
+use barry2d::math::Vector2;
 use barry2d::shape::Cuboid;
 
 fn main() {

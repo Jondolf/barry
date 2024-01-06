@@ -38,6 +38,13 @@ impl Iso2 {
         }
     }
 
+    pub const fn from_xy(x: Real, y: Real) -> Self {
+        Self {
+            translation: Vector2::new(x, y),
+            rotation: Rotation2::IDENTITY,
+        }
+    }
+
     pub fn inverse(self) -> Self {
         let inv_rot = self.rotation.inverse();
         Self {
@@ -139,6 +146,13 @@ impl Iso3 {
         Self {
             translation: Vector3::ZERO,
             rotation,
+        }
+    }
+
+    pub const fn from_xyz(x: Real, y: Real, z: Real) -> Self {
+        Self {
+            translation: Vector3::new(x, y, z),
+            rotation: Rotation3::IDENTITY,
         }
     }
 

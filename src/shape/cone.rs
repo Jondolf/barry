@@ -1,15 +1,10 @@
 //! Support mapping based Cone shape.
 
-use crate::math::{Point, Real, Vector};
+use crate::math::{Real, Vector};
 use crate::shape::SupportMap;
-use na;
-use num::Zero;
 
 #[cfg(feature = "std")]
 use either::Either;
-
-#[cfg(not(feature = "std"))]
-use na::RealField; // for .copysign()
 
 #[cfg(feature = "rkyv")]
 use rkyv::{bytecheck, CheckBytes};
@@ -55,7 +50,7 @@ impl Cone {
     #[inline]
     pub fn scaled(
         self,
-        scale: &Vector<Real>,
+        scale: Vector,
         nsubdivs: u32,
     ) -> Option<Either<Self, super::ConvexPolyhedron>> {
         // NOTE: if the y scale is negative, the result cone points downwards,
@@ -63,8 +58,7 @@ impl Cone {
         if scale.x != scale.z || scale.y < 0.0 {
             // The scaled shape isn’t a cone.
             let (mut vtx, idx) = self.to_trimesh(nsubdivs);
-            vtx.iter_mut()
-                .for_each(|pt| pt.coords = pt.coords.component_mul(scale));
+            vtx.iter_mut().for_each(|pt| *pt = *pt * scale);
             Some(Either::Right(super::ConvexPolyhedron::from_convex_mesh(
                 vtx, &idx,
             )?))
@@ -79,24 +73,25 @@ impl Cone {
 
 impl SupportMap for Cone {
     #[inline]
-    fn local_support_point(&self, dir: &Vector<Real>) -> Point<Real> {
-        let mut vres = *dir;
+    fn local_support_point(&self, dir: Vector) -> Vector {
+        let mut vres = dir;
 
         vres[1] = 0.0;
+        vres = vres.normalize();
 
-        if vres.normalize_mut().is_zero() {
-            vres = na::zero();
+        if vres == Vector::ZERO || !vres.is_finite() {
+            vres = Vector::ZERO;
             vres[1] = self.half_height.copysign(dir[1]);
         } else {
             vres = vres * self.radius;
             vres[1] = -self.half_height;
 
-            if dir.dot(&vres) < dir[1] * self.half_height {
-                vres = na::zero();
+            if dir.dot(vres) < dir[1] * self.half_height {
+                vres = Vector::ZERO;
                 vres[1] = self.half_height
             }
         }
 
-        Point::from(vres)
+        vres
     }
 }
