@@ -143,7 +143,7 @@ impl Mul<Vector2> for Rotation2 {
 impl Mul<UnitVector2> for Rotation2 {
     type Output = UnitVector2;
     fn mul(self, rhs: UnitVector2) -> Self::Output {
-        UnitVector2::from_normalized(self * *rhs)
+        UnitVector2::new_unchecked(self * *rhs)
     }
 }
 
@@ -251,6 +251,6 @@ impl Mul<Vector3> for Rotation3 {
 impl Mul<UnitVector3> for Rotation3 {
     type Output = UnitVector3;
     fn mul(self, rhs: UnitVector3) -> Self::Output {
-        UnitVector3::from_normalized(self.0 * *rhs)
+        UnitVector3::new_unchecked(self.0 * *rhs)
     }
 }

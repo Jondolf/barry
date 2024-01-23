@@ -40,7 +40,7 @@ pub fn clip_halfspace_polygon(
 
             if let Some(toi) = query::details::ray_toi_with_halfspace(
                 center,
-                UnitVector::from_normalized(normal),
+                UnitVector::new_unchecked(normal),
                 &ray,
             ) {
                 if toi > 0.0 && toi < 1.0 {

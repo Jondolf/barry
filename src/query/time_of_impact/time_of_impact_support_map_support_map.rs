@@ -41,8 +41,8 @@ where
             } else {
                 Some(TOI {
                     toi,
-                    normal1: UnitVector::from_normalized(normal1),
-                    normal2: UnitVector::from_normalized(pos12.rotation.inverse() * -normal1),
+                    normal1: UnitVector::new_unchecked(normal1),
+                    normal2: UnitVector::new_unchecked(pos12.rotation.inverse() * -normal1),
                     witness1,
                     witness2: pos12.inverse_transform_point(witness2),
                     status: if toi.is_zero() {

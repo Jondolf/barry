@@ -84,7 +84,7 @@ impl Face {
             normal = n;
             deleted = false;
         } else {
-            normal = UnitVector::from_normalized(Vector::ZERO);
+            normal = UnitVector::new_unchecked(Vector::ZERO);
             deleted = true;
         }
 
@@ -196,7 +196,7 @@ impl EPA {
                         break;
                     }
 
-                    n = UnitVector::from_normalized(Vector::new(-tangent.y, tangent.x));
+                    n = UnitVector::new_unchecked(Vector::new(-tangent.y, tangent.x));
                 } else {
                     break;
                 }
@@ -211,7 +211,7 @@ impl EPA {
                         break;
                     }
 
-                    n = UnitVector::from_normalized(Vector::new(-tangent.y, tangent.x));
+                    n = UnitVector::new_unchecked(Vector::new(-tangent.y, tangent.x));
                 } else {
                     break;
                 }

@@ -178,7 +178,7 @@ impl Segment {
                         dir[0] = -direction[1];
                         dir[1] = direction[0];
                     }
-                    Some(UnitVector::from_normalized(dir))
+                    Some(UnitVector::new_unchecked(dir))
                 }
                 _ => None,
             }

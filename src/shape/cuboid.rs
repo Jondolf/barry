@@ -245,7 +245,7 @@ impl Cuboid {
                 } else {
                     dir[id as usize - 2] = -1.0;
                 }
-                Some(UnitVector::from_normalized(dir))
+                Some(UnitVector::new_unchecked(dir))
             }
             FeatureId::Vertex(id) => {
                 let mut dir = Vector::ZERO;
@@ -288,7 +288,7 @@ impl Cuboid {
                 } else {
                     dir[id as usize - 3] = -1.0;
                 }
-                Some(UnitVector::from_normalized(dir))
+                Some(UnitVector::new_unchecked(dir))
             }
             FeatureId::Edge(id) => {
                 let edge = id & 0b011;
@@ -418,7 +418,7 @@ impl ConvexPolyhedron for Cuboid {
 
             let mut normal=Vector::ZERO;
             normal[i1] = sign;
-            out.set_normal(UnitVector::from_normalized(normal));
+            out.set_normal(UnitVector::new_unchecked(normal));
             out.set_feature_id(FeatureId::Face(i as u32));
         }
         #[cfg(feature = "dim3")]
@@ -472,7 +472,7 @@ impl ConvexPolyhedron for Cuboid {
 
             let mut normal=Vector::ZERO;
             normal[i1] = sign;
-            out.set_normal(UnitVector::from_normalized(normal));
+            out.set_normal(UnitVector::new_unchecked(normal));
 
             if sign > 0.0 {
                 out.set_feature_id(FeatureId::Face(i1 as u32));

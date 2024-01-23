@@ -34,7 +34,7 @@ pub fn time_of_impact_ball_ball(
             witness1 = Vector::ZERO;
             witness2 = Vector::ZERO;
         } else {
-            normal1 = UnitVector::from_normalized(dpt / radius);
+            normal1 = UnitVector::new_unchecked(dpt / radius);
             normal2 = pos12.rotation.inverse() * -normal1;
             witness1 = Vector::from(*normal1 * b1.radius);
             witness2 = Vector::from(*normal2 * b2.radius);

@@ -59,7 +59,7 @@ where
             pos12,
             g1,
             g2,
-            UnitVector::from_normalized(Vector::X),
+            UnitVector::new_unchecked(Vector::X),
         ));
     }
 

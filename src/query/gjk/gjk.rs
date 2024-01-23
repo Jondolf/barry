@@ -246,7 +246,7 @@ where
     let mut ldir = dir;
 
     // Initialize the simplex.
-    let support_point = CSOPoint::from_shapes(pos12, g1, g2, UnitVector::from_normalized(dir));
+    let support_point = CSOPoint::from_shapes(pos12, g1, g2, UnitVector::new_unchecked(dir));
     simplex.reset(support_point.translate(-curr_ray.origin));
 
     // FIXME: reset the simplex if it is empty?

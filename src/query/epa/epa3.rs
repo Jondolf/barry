@@ -76,7 +76,7 @@ impl Face {
             // TODO: It will work OK with our current code, though
             // we should do this in another way to avoid any risk
             // of misusing the face normal in the future.
-            normal = UnitVector::from_normalized(Vector::ZERO);
+            normal = UnitVector::new_unchecked(Vector::ZERO);
         }
 
         Face {
@@ -234,7 +234,7 @@ impl EPA {
         if simplex.dimension() == 0 {
             let mut n = Vector::ZERO;
             n[1] = 1.0;
-            return Some((Vector::ZERO, Vector::ZERO, UnitVector::from_normalized(n)));
+            return Some((Vector::ZERO, Vector::ZERO, UnitVector::new_unchecked(n)));
         } else if simplex.dimension() == 3 {
             let dp1 = self.vertices[1] - self.vertices[0];
             let dp2 = self.vertices[2] - self.vertices[0];
@@ -287,7 +287,7 @@ impl EPA {
             if simplex.dimension() == 1 {
                 let dpt = self.vertices[1] - self.vertices[0];
                 // TODO: Make sure this is correct
-                let dir = UnitVector::from_normalized(dpt.any_orthonormal_vector());
+                let dir = UnitVector::new_unchecked(dpt.any_orthonormal_vector());
                 self.vertices
                     .push(CSOPoint::from_shapes(pos12, g1, g2, dir));
             }

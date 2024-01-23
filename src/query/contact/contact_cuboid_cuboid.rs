@@ -47,7 +47,7 @@ pub fn contact_cuboid_cuboid(
         // the separation vector for the case where we have a vertex-vertex contact.
         if separation < 0.0 || normalized_dir.is_err() {
             // Penetration or contact lying on the boundary exactly.
-            normal1 = UnitVector::from_normalized(sep1.1);
+            normal1 = UnitVector::new_unchecked(sep1.1);
             dist = separation;
         } else {
             let (dir, norm) = normalized_dir.unwrap();
@@ -86,7 +86,7 @@ pub fn contact_cuboid_cuboid(
         // the separation vector for the case where we have a vertex-vertex contact.
         if separation < 0.0 || normalized_dir.is_err() {
             // Penetration or contact lying on the boundary exactly.
-            normal2 = UnitVector::from_normalized(sep2.1);
+            normal2 = UnitVector::new_unchecked(sep2.1);
             dist = separation;
         } else {
             // No penetration.
@@ -120,7 +120,7 @@ pub fn contact_cuboid_cuboid(
         match details::closest_points_segment_segment(pos12, &edge1, &edge2, prediction) {
             ClosestPoints::Disjoint => return None,
             ClosestPoints::WithinMargin(a, b) => {
-                let normal1 = UnitVector::from_normalized(sep3.1);
+                let normal1 = UnitVector::new_unchecked(sep3.1);
                 let normal2 = pos12.rotation.inverse() * -normal1;
                 return Some(Contact::new(a, b, normal1, normal2, sep3.0));
             }
