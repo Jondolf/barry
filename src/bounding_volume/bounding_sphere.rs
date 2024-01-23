@@ -42,7 +42,7 @@ impl BoundingSphere {
     /// Transforms this bounding sphere by `m`.
     #[inline]
     pub fn transform_by(&self, m: Isometry) -> BoundingSphere {
-        BoundingSphere::new(m * self.center, self.radius)
+        BoundingSphere::new(m.translation + self.center, self.radius)
     }
 }
 

@@ -374,12 +374,12 @@ impl BoundingVolume for Aabb {
 
     #[inline]
     fn intersects(&self, other: &Aabb) -> bool {
-        self.mins.cmplt(other.maxs).all() && self.maxs.cmpgt(other.mins).all()
+        self.mins.cmple(other.maxs).all() && self.maxs.cmpge(other.mins).all()
     }
 
     #[inline]
     fn contains(&self, other: &Aabb) -> bool {
-        self.mins.cmplt(other.mins).all() && self.maxs.cmpgt(other.maxs).all()
+        self.mins.cmple(other.mins).all() && self.maxs.cmpge(other.maxs).all()
     }
 
     #[inline]
